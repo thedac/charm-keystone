@@ -15,6 +15,7 @@ ubuntu_openstack_release = {
     'quantal': 'folsom',
     'raring': 'grizzly',
     'saucy': 'havana',
+    'trusty': 'icehouse',
 }
 
 
@@ -24,6 +25,7 @@ openstack_codenames = {
     '2012.2': 'folsom',
     '2013.1': 'grizzly',
     '2013.2': 'havana',
+    '2014.1': 'icehouse',
 }
 
 # The ugly duckling
@@ -199,7 +201,10 @@ def configure_installation_source(rel):
             'grizzly/proposed': 'precise-proposed/grizzly',
             'havana': 'precise-updates/havana',
             'havana/updates': 'precise-updates/havana',
-            'havana/proposed': 'precise-proposed/havana'
+            'havana/proposed': 'precise-proposed/havana',
+            'icehouse': 'precise-updates/icehouse',
+            'icehouse/updates': 'precise-updates/icehouse',
+            'icehouse/proposed': 'precise-proposed/icehouse',
         }
 
         try:
