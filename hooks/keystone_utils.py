@@ -75,7 +75,7 @@ def config_get():
     config = json.loads(output)
     # make sure no config element is blank after config-get
     for c in config.keys():
-        if not config[c]:
+        if config[c] is None:
             error_out("ERROR: Config option has no paramter: %s" % c)
     # tack on our private address and ip
     config["hostname"] = utils.unit_get('private-address')

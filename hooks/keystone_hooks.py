@@ -115,6 +115,7 @@ def install_hook():
                 public_port=cluster.determine_api_port(config["service-port"]))
     update_config_block('DEFAULT',
                 admin_port=cluster.determine_api_port(config["admin-port"]))
+    update_config_block('DEFAULT', use_syslog=config["use-syslog"])
     set_admin_token(config['admin-token'])
 
     # set all backends to use sql+sqlite, if they are not already by default
@@ -424,6 +425,7 @@ def config_changed():
 
     update_config_block('logger_root', level=config['log-level'],
                         file='/etc/keystone/logging.conf')
+    update_config_block('DEFAULT', use_syslog=config["use-syslog"])
     if get_os_version_package('keystone') >= '2013.1':
         # PKI introduced in Grizzly
         configure_pki_tokens(config)
