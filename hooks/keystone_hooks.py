@@ -5,7 +5,11 @@ import sys
 
 from subprocess import check_call
 
-from charmhelpers.contrib import unison
+from charmhelpers.contrib.unison import (
+    ensure_user,
+    get_homedir,
+    ssh_authorized_peers,
+)
 
 from charmhelpers.core.hookenv import (
     Hooks,
