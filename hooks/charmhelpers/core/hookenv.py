@@ -8,7 +8,6 @@ import os
 import json
 import yaml
 import subprocess
-import sys
 import UserDict
 from subprocess import CalledProcessError
 
@@ -148,11 +147,6 @@ def remote_unit():
 def service_name():
     """The name service group this unit belongs to"""
     return local_unit().split('/')[0]
-
-
-def hook_name():
-    """The name of the currently executing hook"""
-    return os.path.basename(sys.argv[0])
 
 
 @cached
