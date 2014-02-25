@@ -122,3 +122,7 @@ options:
     default: "False"
     type: string
     description: "Manage SSL certificates for all service endpoints."
+  use-https:
+    default: "no"
+    type: string
+    description: "Use SSL for Keystone itself. Set to 'yes' to enable it."
