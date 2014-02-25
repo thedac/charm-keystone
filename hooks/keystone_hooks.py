@@ -74,8 +74,8 @@ def install():
 @hooks.hook('config-changed')
 @restart_on_change(restart_map(), stopstart=True)
 def config_changed():
-    unison.ensure_user(user=SSH_USER, group='juju_keystone')
-    homedir = unison.get_homedir(SSH_USER)
+    ensure_user(user=SSH_USER, group='juju_keystone')
+    homedir = get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
         mkdir(homedir, SSH_USER, 'juju_keystone', 0775)
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
@@ -139,20 +139,20 @@ def identity_changed():
 
 @hooks.hook('cluster-relation-joined')
 def cluster_joined():
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
-                                peer_interface='cluster',
-                                ensure_local_user=True)
+    ssh_authorized_peers(user=SSH_USER,
+                         group='juju_keystone',
+                         peer_interface='cluster',
+                         ensure_local_user=True)
 
 
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
-                                peer_interface='cluster',
-                                ensure_local_user=True)
+    ssh_authorized_peers(user=SSH_USER,
+                         group='juju_keystone',
+                         peer_interface='cluster',
+                         ensure_local_user=True)
     synchronize_service_credentials()
     CONFIGS.write_all()
 
