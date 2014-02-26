@@ -23,8 +23,6 @@ from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
     service_restart,
-    service_stop,
-    service_start
 )
 
 from charmhelpers.fetch import (
@@ -74,6 +72,7 @@ def install():
 
 
 @hooks.hook('config-changed')
+@restart_on_change(restart_map())
 def config_changed():
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
