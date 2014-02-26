@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 from subprocess import check_call
 
@@ -21,11 +22,14 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
-    service_restart
+    service_restart,
+    service_stop,
+    service_start
 )
 
 from charmhelpers.fetch import (
-    apt_install, apt_update
+    apt_install, apt_update,
+    filter_installed_packages
 )
 
 from charmhelpers.contrib.openstack.utils import (
@@ -60,6 +64,7 @@ from charmhelpers.payload.execd import execd_preinstall
 hooks = Hooks()
 CONFIGS = register_configs()
 
+
 @hooks.hook()
 def install():
     execd_preinstall()
@@ -67,21 +72,25 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
 
+
 @hooks.hook('config-changed')
-@restart_on_change(restart_map(), stopstart=True)
 def config_changed():
-    unison.ensure_user(user=SSH_USER, group='juju_keystone')
+    unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
-        mkdir(homedir, SSH_USER, 'juju_keystone', 0775)
-    check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
+        mkdir(homedir, SSH_USER, 'keystone', 0775)
+
     if openstack_upgrade_available('keystone'):
         do_openstack_upgrade(configs=CONFIGS)
-        check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
+
+    check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
+
     save_script_rc()
     configure_https()
     CONFIGS.write_all()
     service_restart('keystone')
+    time.sleep(10)
+
     if eligible_leader(CLUSTER_RES):
         migrate_database()
         ensure_initial_admin(config)
@@ -89,9 +98,9 @@ def config_changed():
         # HTTPS may have been set - so fire all identity relations
         # again
         for r_id in relation_ids('identity-service'):
-             for unit in relation_list(r_id):
-                 identity_changed(relation_id=r_id,
-                                  remote_unit=unit)
+            for unit in relation_list(r_id):
+                identity_changed(relation_id=r_id,
+                                 remote_unit=unit)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -106,12 +115,11 @@ def db_joined():
 def db_changed():
     if 'shared-db' not in CONFIGS.complete_contexts():
         log('shared-db relation incomplete. Peer not ready?')
-        return
-    CONFIGS.write(KEYSTONE_CONF)
-    service_restart('keystone')
-    if eligible_leader(CLUSTER_RES):
-        migrate_database()
-        ensure_initial_admin(config)
+    else:
+        CONFIGS.write(KEYSTONE_CONF)
+        if eligible_leader(CLUSTER_RES):
+            migrate_database()
+            ensure_initial_admin(config)
 
 
 @hooks.hook('identity-service-relation-joined')
@@ -121,16 +129,12 @@ def identity_joined():
 
 
 @hooks.hook('identity-service-relation-changed')
-@restart_on_change(restart_map())
-def identity_changed():
-    if not eligible_leader(CLUSTER_RES):
-        log('Deferring identity_changed() to service leader.')
-    #if 'identity-service' not in CONFIGS.complete_contexts():
-    #    return
+def identity_changed(relation_id=None, remote_unit=None):
     if eligible_leader(CLUSTER_RES):
-        add_service_to_keystone()
+        add_service_to_keystone(relation_id, remote_unit)
         synchronize_service_credentials()
-
+    else:
+        log('Deferring identity_changed() to service leader.')
 
 
 @hooks.hook('cluster-relation-joined')
@@ -146,7 +150,7 @@ def cluster_joined():
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
     unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
+                                group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
     synchronize_service_credentials()
@@ -183,18 +187,15 @@ def ha_joined():
 @hooks.hook('ha-relation-changed')
 def ha_changed():
     clustered = relation_get('clustered')
-    if not clustered or clustered in [None, 'None', '']:
-        log('ha_changed: hacluster subordinate not fully clustered.')
-        return
-    if not is_leader(CLUSTER_RES):
-        log('ha_changed: hacluster complete but we are not leader.')
-        return
-    ensure_initial_admin(config)
-    log('Cluster configured, notifying other services and updating '
-        'keystone endpoint configuration')
-    for rid in relation_ids('identity-service'):
-        identity_joined(rid=rid)
-    CONFIGS.write_all()
+    if (clustered is not None and
+        is_leader(CLUSTER_RES)):
+        ensure_initial_admin(config)
+        log('Cluster configured, notifying other services and updating '
+            'keystone endpoint configuration')
+        for rid in relation_ids('identity-service'):
+            relation_set(rid=rid,
+                         auth_host=config('vip'),
+                         service_host=config('vip'))
 
 
 def configure_https():
@@ -212,16 +213,16 @@ def configure_https():
         cmd = ['a2dissite', 'openstack_https_frontend']
         check_call(cmd)
 
-    for rid in relation_ids('identity-service'):
-        identity_joined(rid=rid)
-
 
 @hooks.hook('upgrade-charm')
+@restart_on_change(restart_map(), stopstart=True)
 def upgrade_charm():
-    if openstack_upgrade_available('keystone'):
-        do_openstack_upgrade(configs=CONFIGS)
-    save_script_rc()
-    configure_https()
+    apt_install(filter_installed_packages(determine_packages()))
+    cluster_changed()
+    if eligible_leader(CLUSTER_RES):
+        log('Cluster leader - ensuring endpoint configuration'
+            ' is up to date')
+        ensure_initial_admin(config)
     CONFIGS.write_all()
 
 

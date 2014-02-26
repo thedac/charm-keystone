@@ -2,6 +2,7 @@
 import subprocess
 import os
 import urlparse
+import time
 
 from base64 import b64encode
 from collections import OrderedDict
@@ -37,6 +38,11 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.fetch import (
     apt_install,
     apt_update,
+)
+
+from charmhelpers.core.host import (
+    service_stop,
+    service_start,
 )
 
 import keystone_context
@@ -155,6 +161,7 @@ valid_services = {
     }
 }
 
+
 def resource_map():
     '''
     Dynamically generate a map of resources that will be managed for a single
@@ -233,11 +240,15 @@ def do_openstack_upgrade(configs):
     if eligible_leader(CLUSTER_RES):
         migrate_database()
 
+
 def migrate_database():
     '''Runs keystone-manage to initialize a new database or migrate existing'''
     log('Migrating the keystone database.', level=INFO)
+    service_stop('keystone')
     cmd = ['keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
+    service_start('keystone')
+    time.sleep(10)
 
 
 ## OLD
@@ -578,8 +589,9 @@ def relation_list(rid):
     else:
         return result
 
-def add_service_to_keystone():
-    settings = relation_get()
+
+def add_service_to_keystone(relation_id=None, remote_unit=None):
+    settings = relation_get(rid=relation_id, unit=remote_unit)
     # the minimum settings needed per endpoint
     single = set(['service', 'region', 'public_url', 'admin_url',
                   'internal_url'])
@@ -610,7 +622,8 @@ def add_service_to_keystone():
             for role in get_requested_roles(settings):
                 log("Creating requested role: %s" % role)
                 create_role(role)
-            relation_set(**relation_data)
+            relation_set(relation_id=relation_id,
+                         **relation_data)
             return
         else:
             ensure_valid_service(settings['service'])
@@ -724,7 +737,8 @@ def add_service_to_keystone():
         if is_clustered():
             unison.sync_to_peers(peer_interface='cluster',
                                  paths=[SSL_DIR], user=SSH_USER, verbose=True)
-    relation_set(**relation_data)
+    relation_set(relation_id=relation_id,
+                 **relation_data)
 
 
 def ensure_valid_service(service):
