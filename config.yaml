@@ -126,3 +126,14 @@ options:
     default: "no"
     type: string
     description: "Use SSL for Keystone itself. Set to 'yes' to enable it."
+  ssl_cert:
+    type: string
+    description: |
+      SSL certificate to install and use for API ports.  Setting this value
+      and ssl_key will enable reverse proxying, point Keystone's entry in the
+      Keystone catalog to use https, and override any certficiate and key
+      issued by Keystone (if it is configured to do so).
+  ssl_key:
+    type: string
+    description: SSL key to use with certificate specified as ssl_cert.
+
