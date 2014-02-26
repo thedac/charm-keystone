@@ -608,6 +608,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             else:
                 relation_data["auth_host"] = unit_private_ip()
                 relation_data["service_host"] = unit_private_ip()
+            if https():
+                relation_data["auth_protocol"] = "https"
+                relation_data["service_protocol"] = "https"
+            else:
+                relation_data["auth_protocol"] = "http"
+                relation_data["service_protocol"] = "http"
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             if config('https-service-endpoints') in ['True', 'true']:
@@ -724,7 +730,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     if is_clustered():
         relation_data["auth_host"] = config('vip')
         relation_data["service_host"] = config('vip')
-
+    if https():
+        relation_data["auth_protocol"] = "https"
+        relation_data["service_protocol"] = "https"
+    else:
+        relation_data["auth_protocol"] = "http"
+        relation_data["service_protocol"] = "http"
     # generate or get a new cert/key for service if set to manage certs.
     if config('https-service-endpoints') in ['True', 'true']:
         ca = get_ca(user=SSH_USER)
