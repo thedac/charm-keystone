@@ -707,9 +707,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # service credentials
     relation_data = {
         "admin_token": token,
-        "service_host": config("hostname"),
+        "service_host": unit_private_ip(),
         "service_port": config("service-port"),
-        "auth_host": config("hostname"),
+        "auth_host": unit_private_ip(),
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
