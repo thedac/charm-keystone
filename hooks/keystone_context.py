@@ -17,6 +17,7 @@ import os
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
+
 class ApacheSSLContext(context.ApacheSSLContext):
 
     interfaces = ['https']
@@ -98,6 +99,8 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['token'] = set_admin_token()
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'))
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'))
+        ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
+        ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
         if config('enable-pki') not in ['false', 'False', 'no', 'No']:
             ctxt['signing'] = True
         return ctxt
