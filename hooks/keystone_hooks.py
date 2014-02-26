@@ -221,6 +221,7 @@ def upgrade_charm():
     if eligible_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration'
             ' is up to date')
+        time.sleep(10)
         ensure_initial_admin(config)
     CONFIGS.write_all()
 
