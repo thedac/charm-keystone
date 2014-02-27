@@ -123,8 +123,8 @@ options:
     type: string
     description: "Manage SSL certificates for all service endpoints."
   use-https:
-    default: "no"
-    type: string
+    default: False
+    type: boolean
     description: "Use SSL for Keystone itself. Set to 'yes' to enable it."
   ssl_cert:
     type: string
