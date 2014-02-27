@@ -87,9 +87,6 @@ def config_changed():
     save_script_rc()
     configure_https()
     CONFIGS.write_all()
-    service_restart('keystone')
-    time.sleep(10)
-
     if eligible_leader(CLUSTER_RES):
         migrate_database()
         ensure_initial_admin(config)
