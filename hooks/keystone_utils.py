@@ -72,6 +72,7 @@ API_PORTS = {
 }
 
 KEYSTONE_CONF = "/etc/keystone/keystone.conf"
+KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
 STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
 STORED_TOKEN = "/var/lib/keystone/keystone.token"
 SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
@@ -89,7 +90,7 @@ BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
         'services': BASE_SERVICES,
         'contexts': [keystone_context.KeystoneContext(),
-                     context.SharedDBContext(),
+                     context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
                      context.SyslogContext(),
                      keystone_context.HAProxyContext()],
     }),
