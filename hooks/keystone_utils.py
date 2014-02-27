@@ -672,8 +672,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # by ensuring each possible endpiont has appropriate fields
             #  ['service', 'region', 'public_url', 'admin_url', 'internal_url']
             if single.issubset(endpoints[ep]):
-                ensure_valid_service(ep['service'])
                 ep = endpoints[ep]
+                ensure_valid_service(ep['service'])
                 add_endpoint(region=ep['region'], service=ep['service'],
                              publicurl=ep['public_url'],
                              adminurl=ep['admin_url'],
