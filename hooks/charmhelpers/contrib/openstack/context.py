@@ -432,6 +432,9 @@ class ApacheSSLContext(OSContextGenerator):
             'private_address': unit_get('private-address'),
             'endpoints': []
         }
+        vip = config('vip')
+        if is_clustered() and vip:
+            ctxt['private_address'] = vip
         for api_port in self.external_ports:
             ext_port = determine_apache_port(api_port)
             int_port = determine_api_port(api_port)
