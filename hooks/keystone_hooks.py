@@ -181,12 +181,13 @@ def ha_joined():
 
 
 @hooks.hook('ha-relation-changed')
+@restart_on_change(restart_map())
 def ha_changed():
     clustered = relation_get('clustered')
+    CONFIGS.write_all()
     if (clustered is not None and
         is_leader(CLUSTER_RES)):
         ensure_initial_admin(config)
-        CONFIGS.write_all()
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
         for rid in relation_ids('identity-service'):
