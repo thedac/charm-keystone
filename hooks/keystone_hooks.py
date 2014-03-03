@@ -22,7 +22,6 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
-    service_restart,
 )
 
 from charmhelpers.fetch import (
@@ -77,7 +76,7 @@ def config_changed():
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
-        mkdir(homedir, SSH_USER, 'keystone', 0775)
+        mkdir(homedir, SSH_USER, 'keystone', 0o775)
 
     if openstack_upgrade_available('keystone'):
         do_openstack_upgrade(configs=CONFIGS)
@@ -186,7 +185,7 @@ def ha_changed():
     clustered = relation_get('clustered')
     CONFIGS.write_all()
     if (clustered is not None and
-        is_leader(CLUSTER_RES)):
+            is_leader(CLUSTER_RES)):
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')

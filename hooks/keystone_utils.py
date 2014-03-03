@@ -13,7 +13,7 @@ from charmhelpers.contrib.hahelpers.cluster import(
     determine_api_port,
     https,
     is_clustered
-    )
+)
 
 from charmhelpers.contrib.openstack import context, templating
 
@@ -252,13 +252,13 @@ def migrate_database():
     time.sleep(10)
 
 
-## OLD
+# OLD
 
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
     local_endpoint = 'http://localhost:{}/v2.0/'.format(
         determine_api_port(api_port('keystone-admin'))
-        )
+    )
     return local_endpoint
 
 
@@ -317,7 +317,7 @@ def create_service_entry(service_name, service_type, service_desc, owner=None):
     log("Created new service entry '%s'" % service_name)
 
 
-def create_endpoint_template(region, service,  publicurl, adminurl,
+def create_endpoint_template(region, service, publicurl, adminurl,
                              internalurl):
     """ Create a new endpoint template for service if one does not already
         exist matching name *and* region """
@@ -328,7 +328,7 @@ def create_endpoint_template(region, service,  publicurl, adminurl,
     for ep in [e._info for e in manager.api.endpoints.list()]:
         if ep['service_id'] == service_id and ep['region'] == region:
             log("Endpoint template already exists for '%s' in '%s'"
-                  % (service, region))
+                % (service, region))
 
             up_to_date = True
             for k in ['publicurl', 'adminurl', 'internalurl']:
@@ -405,7 +405,7 @@ def create_role(name, user=None, tenant=None):
 
     if None in [user_id, role_id, tenant_id]:
         error_out("Could not resolve [%s, %s, %s]" %
-                   (user_id, role_id, tenant_id))
+                  (user_id, role_id, tenant_id))
 
     grant_role(user, name, tenant)
 
@@ -415,7 +415,7 @@ def grant_role(user, role, tenant):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
-    log("Granting user '%s' role '%s' on tenant '%s'" % \
+    log("Granting user '%s' role '%s' on tenant '%s'" %
        (user, role, tenant))
     user_id = manager.resolve_user_id(user)
     role_id = manager.resolve_role_id(role)
@@ -426,10 +426,10 @@ def grant_role(user, role, tenant):
         manager.api.roles.add_user_role(user=user_id,
                                         role=role_id,
                                         tenant=tenant_id)
-        log("Granted user '%s' role '%s' on tenant '%s'" % \
+        log("Granted user '%s' role '%s' on tenant '%s'" %
            (user, role, tenant))
     else:
-        log("User '%s' already has role '%s' on tenant '%s'" % \
+        log("User '%s' already has role '%s' on tenant '%s'" %
            (user, role, tenant))
 
 
@@ -453,8 +453,8 @@ def ensure_initial_admin(config):
         log("Loading stored passwd from %s" % STORED_PASSWD)
         passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
     if passwd == "":
-        log("Generating new passwd for user: %s" % \
-                  config("admin-user"))
+        log("Generating new passwd for user: %s" %
+            config("admin-user"))
         cmd = ['pwgen', '-c', '16', '1']
         passwd = str(subprocess.check_output(cmd)).strip()
         open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
@@ -506,8 +506,8 @@ def update_user_password(username, password):
         error_out("Could not resolve user id for '%s'" % username)
 
     manager.api.users.update_password(user=user_id, password=password)
-    log("Successfully updated password for user '%s'" % \
-              username)
+    log("Successfully updated password for user '%s'" %
+        username)
 
 
 def load_stored_passwords(path=SERVICE_PASSWD_PATH):
@@ -545,7 +545,7 @@ def synchronize_service_credentials():
     broadcasted by peer, depending on hook context.
     '''
     if (not eligible_leader(CLUSTER_RES) or
-        not os.path.isfile(SERVICE_PASSWD_PATH)):
+            not os.path.isfile(SERVICE_PASSWD_PATH)):
         return
     log('Synchronizing service passwords to all peers.')
     if is_clustered():
@@ -569,7 +569,7 @@ def get_ca(user='keystone', group='keystone'):
                         ca_dir=os.path.join(SSL_DIR,
                                             '%s_intermediate_ca' % d_name),
                         root_ca_dir=os.path.join(SSL_DIR,
-                                            '%s_root_ca' % d_name))
+                                                 '%s_root_ca' % d_name))
         # SSL_DIR is synchronized via all peers over unison+ssh, need
         # to ensure permissions.
         subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
@@ -583,7 +583,7 @@ def relation_list(rid):
     cmd = [
         'relation-list',
         '-r', rid,
-        ]
+    ]
     result = str(subprocess.check_output(cmd)).split()
     if result == "":
         return None
@@ -773,7 +773,7 @@ def add_endpoint(region, service, publicurl, adminurl, internalurl):
 def get_requested_roles(settings):
     ''' Retrieve any valid requested_roles from dict settings '''
     if ('requested_roles' in settings and
-        settings['requested_roles'] not in ['None', None]):
+            settings['requested_roles'] not in ['None', None]):
         return settings['requested_roles'].split(',')
     else:
         return []
