@@ -186,6 +186,7 @@ def ha_changed():
     if (clustered is not None and
         is_leader(CLUSTER_RES)):
         ensure_initial_admin(config)
+        CONFIGS.write_all()
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
         for rid in relation_ids('identity-service'):
