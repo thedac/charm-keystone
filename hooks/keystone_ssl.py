@@ -1,10 +1,12 @@
 #!/usr/bin/python
 
+import base64
 import os
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import zipfile
 
 CA_EXPIRY = '365'
 ORG_NAME = 'Ubuntu'

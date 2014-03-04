@@ -552,6 +552,9 @@ def synchronize_service_credentials():
         unison.sync_to_peers(peer_interface='cluster',
                              paths=[SERVICE_PASSWD_PATH], user=SSH_USER,
                              verbose=True)
+        if config('http-service-endpoints') in ['True', 'true']:
+            unison.sync_to_peers(peer_interface='cluster',
+                                 paths=[SSL_DIR], user=SSH_USER, verbose=True)
 
 CA = []
 
@@ -746,9 +749,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ssl_key'] = b64encode(key)
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
-        if is_clustered():
-            unison.sync_to_peers(peer_interface='cluster',
-                                 paths=[SSL_DIR], user=SSH_USER, verbose=True)
     relation_set(relation_id=relation_id,
                  **relation_data)
 
