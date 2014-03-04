@@ -60,6 +60,10 @@ valid_services = {
         "type": "compute",
         "desc": "Nova Compute Service"
     },
+    "novav3": {
+        "type": "computev3",
+        "desc": "Nova Compute Service (v3 API)"
+    },
     "nova-volume": {
         "type": "volume",
         "desc": "Nova Volume Service"
@@ -87,6 +91,10 @@ valid_services = {
     "quantum": {
         "type": "network",
         "desc": "Quantum Networking Service"
+    },
+    "neutron": {
+        "type": "network",
+        "desc": "Neutron Networking Service"
     },
     "oxygen": {
         "type": "oxygen",
