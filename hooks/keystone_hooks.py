@@ -433,6 +433,8 @@ def config_changed():
     if config_dirty():
         utils.restart('keystone')
 
+    time.sleep(5);
+
     if cluster.eligible_leader(CLUSTER_RES):
         utils.juju_log('INFO',
                        'Firing identity_changed hook'
