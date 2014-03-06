@@ -455,7 +455,7 @@ def do_openstack_upgrade(install_src, packages):
     execute('apt-get update', die=True, echo=True)
     os.environ['DEBIAN_FRONTEND'] = 'noninteractive'
     cmd = 'apt-get --option Dpkg::Options::=--force-confnew -y '\
-          'upgrade'
+          'dist-upgrade'
     execute(cmd, echo=True, die=True)
 
     # we have new, fresh config files that need updating.
