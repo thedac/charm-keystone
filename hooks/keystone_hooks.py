@@ -550,6 +550,17 @@ def ha_relation_joined():
                        clones=clones)
 
 
+def admin_relation_changed():
+    relation_data = {
+        "service_port": config["service-port"],
+        "service_username": config["admin-user"],
+        "service_password": config["admin-password"],
+        "service_tenant_name": config["admin-role"],
+        "service_region": "config["region"],
+    }
+    utils.relation_set(**relation_data)
+
+
 hooks = {
     "install": install_hook,
     "shared-db-relation-joined": db_joined,
@@ -562,7 +573,8 @@ hooks = {
     "cluster-relation-departed": cluster_changed,
     "ha-relation-joined": ha_relation_joined,
     "ha-relation-changed": ha_relation_changed,
-    "upgrade-charm": upgrade_charm
+    "upgrade-charm": upgrade_charm,
+    "admin-relation-changed": admin_relation_changed,
 }
 
 utils.do_hooks(hooks)
