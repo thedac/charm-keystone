@@ -2,6 +2,7 @@
 
 import time
 import urlparse
+import os
 
 from base64 import b64encode
 
@@ -26,7 +27,7 @@ from keystone_utils import (
     SSH_USER,
     SSL_DIR,
     CLUSTER_RES,
-    https
+    https,
     )
 
 from lib.openstack_common import (
@@ -554,10 +555,12 @@ def admin_relation_changed():
     relation_data = {
         "service_port": config["service-port"],
         "service_username": config["admin-user"],
-        "service_password": config["admin-password"],
         "service_tenant_name": config["admin-role"],
         "service_region": config["region"],
     }
+    if os.path.isfile(keystone_utils.stored_passwd):
+        relation_data["service_password"] = open(keystone_utils.stored_passwd,
+                                                 'r').readline().strip('\n')
     utils.relation_set(**relation_data)
 
 
