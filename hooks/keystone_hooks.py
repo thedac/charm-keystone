@@ -28,6 +28,7 @@ from keystone_utils import (
     SSL_DIR,
     CLUSTER_RES,
     https,
+    stored_passwd,
     )
 
 from lib.openstack_common import (
@@ -558,8 +559,8 @@ def admin_relation_changed():
         "service_tenant_name": config["admin-role"],
         "service_region": config["region"],
     }
-    if os.path.isfile(keystone_utils.stored_passwd):
-        relation_data["service_password"] = open(keystone_utils.stored_passwd,
+    if os.path.isfile(stored_passwd):
+        relation_data["service_password"] = open(stored_passwd,
                                                  'r').readline().strip('\n')
     utils.relation_set(**relation_data)
 
