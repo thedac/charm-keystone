@@ -556,7 +556,7 @@ def admin_relation_changed():
         "service_username": config["admin-user"],
         "service_password": config["admin-password"],
         "service_tenant_name": config["admin-role"],
-        "service_region": "config["region"],
+        "service_region": config["region"],
     }
     utils.relation_set(**relation_data)
 
