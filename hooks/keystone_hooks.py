@@ -554,6 +554,7 @@ def ha_relation_joined():
 
 def admin_relation_changed():
     relation_data = {
+        "service_hostname": config["hostname"],
         "service_port": config["service-port"],
         "service_username": config["admin-user"],
         "service_tenant_name": config["admin-role"],
