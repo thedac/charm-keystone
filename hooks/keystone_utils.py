@@ -1,172 +1,305 @@
 #!/usr/bin/python
-import ConfigParser
-import sys
-import json
-import time
 import subprocess
 import os
+import urlparse
+import time
 
-from lib.openstack_common import(
-    get_os_codename_install_source,
-    get_os_codename_package,
+from base64 import b64encode
+from collections import OrderedDict
+from copy import deepcopy
+
+from charmhelpers.contrib.hahelpers.cluster import(
+    eligible_leader,
+    determine_api_port,
+    https,
+    is_clustered
+)
+
+from charmhelpers.contrib.openstack import context, templating
+
+from charmhelpers.contrib.openstack.utils import (
+    configure_installation_source,
     error_out,
-    configure_installation_source
-    )
+    get_os_codename_install_source,
+    os_release,
+    save_script_rc as _save_script_rc)
 
+import charmhelpers.contrib.unison as unison
+
+from charmhelpers.core.hookenv import (
+    config,
+    log,
+    relation_get,
+    relation_set,
+    unit_private_ip,
+    INFO,
+)
+
+from charmhelpers.fetch import (
+    apt_install,
+    apt_update,
+)
+
+from charmhelpers.core.host import (
+    service_stop,
+    service_start,
+)
+
+import keystone_context
 import keystone_ssl as ssl
-import lib.unison as unison
-import lib.utils as utils
-import lib.cluster_utils as cluster
 
+TEMPLATES = 'templates/'
 
-keystone_conf = "/etc/keystone/keystone.conf"
-stored_passwd = "/var/lib/keystone/keystone.passwd"
-stored_token = "/var/lib/keystone/keystone.token"
+# removed from original: charm-helper-sh
+BASE_PACKAGES = [
+    'apache2',
+    'haproxy',
+    'openssl',
+    'python-keystoneclient',
+    'python-mysqldb',
+    'pwgen',
+    'unison',
+    'uuid',
+]
+
+BASE_SERVICES = [
+    'keystone',
+]
+
+API_PORTS = {
+    'keystone-admin': config('admin-port'),
+    'keystone-public': config('service-port')
+}
+
+KEYSTONE_CONF = "/etc/keystone/keystone.conf"
+KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
+STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
+STORED_TOKEN = "/var/lib/keystone/keystone.token"
 SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
+
+HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
+APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
+APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'res_ks_vip'
 SSH_USER = 'juju_keystone'
 
+BASE_RESOURCE_MAP = OrderedDict([
+    (KEYSTONE_CONF, {
+        'services': BASE_SERVICES,
+        'contexts': [keystone_context.KeystoneContext(),
+                     context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
+                     context.SyslogContext(),
+                     keystone_context.HAProxyContext()],
+    }),
+    (HAPROXY_CONF, {
+        'contexts': [context.HAProxyContext(),
+                     keystone_context.HAProxyContext()],
+        'services': ['haproxy'],
+    }),
+    (APACHE_CONF, {
+        'contexts': [keystone_context.ApacheSSLContext()],
+        'services': ['apache2'],
+    }),
+    (APACHE_24_CONF, {
+        'contexts': [keystone_context.ApacheSSLContext()],
+        'services': ['apache2'],
+    }),
+])
 
-def execute(cmd, die=False, echo=False):
-    """ Executes a command
+CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
-    if die=True, script will exit(1) if command does not return 0
-    if echo=True, output of command will be printed to stdout
+valid_services = {
+    "nova": {
+        "type": "compute",
+        "desc": "Nova Compute Service"
+    },
+    "nova-volume": {
+        "type": "volume",
+        "desc": "Nova Volume Service"
+    },
+    "cinder": {
+        "type": "volume",
+        "desc": "Cinder Volume Service"
+    },
+    "ec2": {
+        "type": "ec2",
+        "desc": "EC2 Compatibility Layer"
+    },
+    "glance": {
+        "type": "image",
+        "desc": "Glance Image Service"
+    },
+    "s3": {
+        "type": "s3",
+        "desc": "S3 Compatible object-store"
+    },
+    "swift": {
+        "type": "object-store",
+        "desc": "Swift Object Storage Service"
+    },
+    "quantum": {
+        "type": "network",
+        "desc": "Quantum Networking Service"
+    },
+    "oxygen": {
+        "type": "oxygen",
+        "desc": "Oxygen Cloud Image Service"
+    },
+    "ceilometer": {
+        "type": "metering",
+        "desc": "Ceilometer Metering Service"
+    },
+    "heat": {
+        "type": "orchestration",
+        "desc": "Heat Orchestration API"
+    },
+    "heat-cfn": {
+        "type": "cloudformation",
+        "desc": "Heat CloudFormation API"
+    }
+}
 
-    returns a tuple: (stdout, stderr, return code)
-    """
-    p = subprocess.Popen(cmd.split(" "),
-                         stdout=subprocess.PIPE,
-                         stdin=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
-    stdout = ""
-    stderr = ""
 
-    def print_line(l):
-        if echo:
-            print l.strip('\n')
-            sys.stdout.flush()
+def resource_map():
+    '''
+    Dynamically generate a map of resources that will be managed for a single
+    hook execution.
+    '''
+    resource_map = deepcopy(BASE_RESOURCE_MAP)
 
-    for l in iter(p.stdout.readline, ''):
-        print_line(l)
-        stdout += l
-    for l in iter(p.stderr.readline, ''):
-        print_line(l)
-        stderr += l
-
-    p.communicate()
-    rc = p.returncode
-
-    if die and rc != 0:
-        error_out("ERROR: command %s return non-zero.\n" % cmd)
-    return (stdout, stderr, rc)
+    if os.path.exists('/etc/apache2/conf-available'):
+        resource_map.pop(APACHE_CONF)
+    else:
+        resource_map.pop(APACHE_24_CONF)
+    return resource_map
 
 
-def config_get():
-    """ Obtain the units config via 'config-get'
-    Returns a dict representing current config.
-    private-address and IP of the unit is also tacked on for
-    convienence
-    """
-    output = execute("config-get --format json")[0]
-    config = json.loads(output)
-    # make sure no config element is blank after config-get
-    for c in config.keys():
-        if config[c] is None:
-            error_out("ERROR: Config option has no paramter: %s" % c)
-    # tack on our private address and ip
-    config["hostname"] = utils.unit_get('private-address')
-    return config
+def register_configs():
+    release = os_release('keystone')
+    configs = templating.OSConfigRenderer(templates_dir=TEMPLATES,
+                                          openstack_release=release)
+    for cfg, rscs in resource_map().iteritems():
+        configs.register(cfg, rscs['contexts'])
+    return configs
 
 
-@utils.cached
+def restart_map():
+    return OrderedDict([(cfg, v['services'])
+                        for cfg, v in resource_map().iteritems()
+                        if v['services']])
+
+
+def determine_ports():
+    '''Assemble a list of API ports for services we are managing'''
+    ports = [config('admin-port'), config('service-port')]
+    return list(set(ports))
+
+
+def api_port(service):
+    return API_PORTS[service]
+
+
+def determine_packages():
+    # currently all packages match service names
+    packages = [] + BASE_PACKAGES
+    for k, v in resource_map().iteritems():
+        packages.extend(v['services'])
+    return list(set(packages))
+
+
+def save_script_rc():
+    env_vars = {'OPENSTACK_SERVICE_KEYSTONE': 'keystone',
+                'OPENSTACK_PORT_ADMIN': determine_api_port(
+                    api_port('keystone-admin')),
+                'OPENSTACK_PORT_PUBLIC': determine_api_port(
+                    api_port('keystone-public'))}
+    _save_script_rc(**env_vars)
+
+
+def do_openstack_upgrade(configs):
+    new_src = config('openstack-origin')
+    new_os_rel = get_os_codename_install_source(new_src)
+    log('Performing OpenStack upgrade to %s.' % (new_os_rel))
+
+    configure_installation_source(new_src)
+    apt_update()
+
+    dpkg_opts = [
+        '--option', 'Dpkg::Options::=--force-confnew',
+        '--option', 'Dpkg::Options::=--force-confdef',
+    ]
+
+    apt_install(packages=determine_packages(), options=dpkg_opts, fatal=True)
+
+    # set CONFIGS to load templates from new release and regenerate config
+    configs.set_release(openstack_release=new_os_rel)
+    configs.write_all()
+
+    if eligible_leader(CLUSTER_RES):
+        migrate_database()
+
+
+def migrate_database():
+    '''Runs keystone-manage to initialize a new database or migrate existing'''
+    log('Migrating the keystone database.', level=INFO)
+    service_stop('keystone')
+    cmd = ['keystone-manage', 'db_sync']
+    subprocess.check_output(cmd)
+    service_start('keystone')
+    time.sleep(10)
+
+
+# OLD
+
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
     local_endpoint = 'http://localhost:{}/v2.0/'.format(
-        cluster.determine_api_port(utils.config_get('admin-port'))
-        )
+        determine_api_port(api_port('keystone-admin'))
+    )
     return local_endpoint
 
 
-def set_admin_token(admin_token):
+def set_admin_token(admin_token='None'):
     """Set admin token according to deployment config or use a randomly
        generated token if none is specified (default).
     """
     if admin_token != 'None':
-        utils.juju_log('INFO',
-                       'Configuring Keystone to use'
-                       ' a pre-configured admin token.')
+        log('Configuring Keystone to use a pre-configured admin token.')
         token = admin_token
     else:
-        utils.juju_log('INFO',
-                       'Configuring Keystone to use a random admin token.')
-        if os.path.isfile(stored_token):
+        log('Configuring Keystone to use a random admin token.')
+        if os.path.isfile(STORED_TOKEN):
             msg = 'Loading a previously generated' \
-                  ' admin token from %s' % stored_token
-            utils.juju_log('INFO', msg)
-            f = open(stored_token, 'r')
+                  ' admin token from %s' % STORED_TOKEN
+            log(msg)
+            f = open(STORED_TOKEN, 'r')
             token = f.read().strip()
             f.close()
         else:
-            token = execute('pwgen -c 32 1', die=True)[0].strip()
-            out = open(stored_token, 'w')
+            cmd = ['pwgen', '-c', '32', '1']
+            token = str(subprocess.check_output(cmd)).strip()
+            out = open(STORED_TOKEN, 'w')
             out.write('%s\n' % token)
             out.close()
-    update_config_block('DEFAULT', admin_token=token)
+    return(token)
 
 
 def get_admin_token():
     """Temporary utility to grab the admin token as configured in
        keystone.conf
     """
-    with open(keystone_conf, 'r') as f:
+    with open(KEYSTONE_CONF, 'r') as f:
         for l in f.readlines():
             if l.split(' ')[0] == 'admin_token':
                 try:
                     return l.split('=')[1].strip()
                 except:
                     error_out('Could not parse admin_token line from %s' %
-                              keystone_conf)
-    error_out('Could not find admin_token line in %s' % keystone_conf)
-
-
-# Track all updated config settings.
-_config_dirty = [False]
-
-def config_dirty():
-    return True in _config_dirty
-
-def update_config_block(section, **kwargs):
-    """ Updates keystone.conf blocks given kwargs.
-    Update a config setting in a specific setting of a config
-    file (/etc/keystone/keystone.conf, by default)
-    """
-    if 'file' in kwargs:
-        conf_file = kwargs['file']
-        del kwargs['file']
-    else:
-        conf_file = keystone_conf
-    config = ConfigParser.RawConfigParser()
-    config.read(conf_file)
-
-    if section != 'DEFAULT' and not config.has_section(section):
-        config.add_section(section)
-        _config_dirty[0] = True
-
-    for k, v in kwargs.iteritems():
-        try:
-            cur = config.get(section, k)
-            if cur != v:
-                _config_dirty[0] = True
-        except (ConfigParser.NoSectionError,
-                ConfigParser.NoOptionError):
-            _config_dirty[0] = True
-        config.set(section, k, v)
-    with open(conf_file, 'wb') as out:
-        config.write(out)
+                              KEYSTONE_CONF)
+    error_out('Could not find admin_token line in %s' % KEYSTONE_CONF)
 
 
 def create_service_entry(service_name, service_type, service_desc, owner=None):
@@ -176,17 +309,15 @@ def create_service_entry(service_name, service_type, service_desc, owner=None):
                                       token=get_admin_token())
     for service in [s._info for s in manager.api.services.list()]:
         if service['name'] == service_name:
-            utils.juju_log('INFO',
-                           "Service entry for '%s' already exists." % \
-                           service_name)
+            log("Service entry for '%s' already exists." % service_name)
             return
     manager.api.services.create(name=service_name,
                                 service_type=service_type,
                                 description=service_desc)
-    utils.juju_log('INFO', "Created new service entry '%s'" % service_name)
+    log("Created new service entry '%s'" % service_name)
 
 
-def create_endpoint_template(region, service,  publicurl, adminurl,
+def create_endpoint_template(region, service, publicurl, adminurl,
                              internalurl):
     """ Create a new endpoint template for service if one does not already
         exist matching name *and* region """
@@ -196,9 +327,8 @@ def create_endpoint_template(region, service,  publicurl, adminurl,
     service_id = manager.resolve_service_id(service)
     for ep in [e._info for e in manager.api.endpoints.list()]:
         if ep['service_id'] == service_id and ep['region'] == region:
-            utils.juju_log('INFO',
-                           "Endpoint template already exists for '%s' in '%s'"
-                           % (service, region))
+            log("Endpoint template already exists for '%s' in '%s'"
+                % (service, region))
 
             up_to_date = True
             for k in ['publicurl', 'adminurl', 'internalurl']:
@@ -209,9 +339,7 @@ def create_endpoint_template(region, service,  publicurl, adminurl,
                 return
             else:
                 # delete endpoint and recreate if endpoint urls need updating.
-                utils.juju_log('INFO',
-                               "Updating endpoint template with"
-                               " new endpoint urls.")
+                log("Updating endpoint template with new endpoint urls.")
                 manager.api.endpoints.delete(ep['id'])
 
     manager.api.endpoints.create(region=region,
@@ -219,8 +347,7 @@ def create_endpoint_template(region, service,  publicurl, adminurl,
                                  publicurl=publicurl,
                                  adminurl=adminurl,
                                  internalurl=internalurl)
-    utils.juju_log('INFO', "Created new endpoint template for '%s' in '%s'" %
-                   (region, service))
+    log("Created new endpoint template for '%s' in '%s'" % (region, service))
 
 
 def create_tenant(name):
@@ -232,9 +359,9 @@ def create_tenant(name):
     if not tenants or name not in [t['name'] for t in tenants]:
         manager.api.tenants.create(tenant_name=name,
                                    description='Created by Juju')
-        utils.juju_log('INFO', "Created new tenant: %s" % name)
+        log("Created new tenant: %s" % name)
         return
-    utils.juju_log('INFO', "Tenant '%s' already exists." % name)
+    log("Tenant '%s' already exists." % name)
 
 
 def create_user(name, password, tenant):
@@ -251,10 +378,9 @@ def create_user(name, password, tenant):
                                  password=password,
                                  email='juju@localhost',
                                  tenant_id=tenant_id)
-        utils.juju_log('INFO', "Created new user '%s' tenant: %s" % \
-                       (name, tenant_id))
+        log("Created new user '%s' tenant: %s" % (name, tenant_id))
         return
-    utils.juju_log('INFO', "A user named '%s' already exists" % name)
+    log("A user named '%s' already exists" % name)
 
 
 def create_role(name, user=None, tenant=None):
@@ -265,9 +391,9 @@ def create_role(name, user=None, tenant=None):
     roles = [r._info for r in manager.api.roles.list()]
     if not roles or name not in [r['name'] for r in roles]:
         manager.api.roles.create(name=name)
-        utils.juju_log('INFO', "Created new role '%s'" % name)
+        log("Created new role '%s'" % name)
     else:
-        utils.juju_log('INFO', "A role named '%s' already exists" % name)
+        log("A role named '%s' already exists" % name)
 
     if not user and not tenant:
         return
@@ -279,7 +405,7 @@ def create_role(name, user=None, tenant=None):
 
     if None in [user_id, role_id, tenant_id]:
         error_out("Could not resolve [%s, %s, %s]" %
-                   (user_id, role_id, tenant_id))
+                  (user_id, role_id, tenant_id))
 
     grant_role(user, name, tenant)
 
@@ -289,8 +415,8 @@ def grant_role(user, role, tenant):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
-    utils.juju_log('INFO', "Granting user '%s' role '%s' on tenant '%s'" % \
-                   (user, role, tenant))
+    log("Granting user '%s' role '%s' on tenant '%s'" %
+       (user, role, tenant))
     user_id = manager.resolve_user_id(user)
     role_id = manager.resolve_role_id(role)
     tenant_id = manager.resolve_tenant_id(tenant)
@@ -300,28 +426,11 @@ def grant_role(user, role, tenant):
         manager.api.roles.add_user_role(user=user_id,
                                         role=role_id,
                                         tenant=tenant_id)
-        utils.juju_log('INFO', "Granted user '%s' role '%s' on tenant '%s'" % \
-                       (user, role, tenant))
+        log("Granted user '%s' role '%s' on tenant '%s'" %
+           (user, role, tenant))
     else:
-        utils.juju_log('INFO',
-                       "User '%s' already has role '%s' on tenant '%s'" % \
-                       (user, role, tenant))
-
-
-def generate_admin_token(config):
-    """ generate and add an admin token """
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token='ADMIN')
-    if config["admin-token"] == "None":
-        import random
-        token = random.randrange(1000000000000, 9999999999999)
-    else:
-        return config["admin-token"]
-    manager.api.add_token(token, config["admin-user"],
-                          "admin", config["token-expiry"])
-    utils.juju_log('INFO', "Generated and added new random admin token.")
-    return token
+        log("User '%s' already has role '%s' on tenant '%s'" %
+           (user, role, tenant))
 
 
 def ensure_initial_admin(config):
@@ -335,48 +444,53 @@ def ensure_initial_admin(config):
         changes?
     """
     create_tenant("admin")
-    create_tenant(config["service-tenant"])
+    create_tenant(config("service-tenant"))
 
     passwd = ""
-    if config["admin-password"] != "None":
-        passwd = config["admin-password"]
-    elif os.path.isfile(stored_passwd):
-        utils.juju_log('INFO', "Loading stored passwd from %s" % stored_passwd)
-        passwd = open(stored_passwd, 'r').readline().strip('\n')
+    if config("admin-password") != "None":
+        passwd = config("admin-password")
+    elif os.path.isfile(STORED_PASSWD):
+        log("Loading stored passwd from %s" % STORED_PASSWD)
+        passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
     if passwd == "":
-        utils.juju_log('INFO', "Generating new passwd for user: %s" % \
-                       config["admin-user"])
-        passwd = execute("pwgen -c 16 1", die=True)[0]
-        open(stored_passwd, 'w+').writelines("%s\n" % passwd)
+        log("Generating new passwd for user: %s" %
+            config("admin-user"))
+        cmd = ['pwgen', '-c', '16', '1']
+        passwd = str(subprocess.check_output(cmd)).strip()
+        open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
 
-    create_user(config['admin-user'], passwd, tenant='admin')
-    update_user_password(config['admin-user'], passwd)
-    create_role(config['admin-role'], config['admin-user'], 'admin')
+    create_user(config('admin-user'), passwd, tenant='admin')
+    update_user_password(config('admin-user'), passwd)
+    create_role(config('admin-role'), config('admin-user'), 'admin')
     # TODO(adam_g): The following roles are likely not needed since redux merge
-    create_role("KeystoneAdmin", config["admin-user"], 'admin')
-    create_role("KeystoneServiceAdmin", config["admin-user"], 'admin')
+    create_role("KeystoneAdmin", config("admin-user"), 'admin')
+    create_role("KeystoneServiceAdmin", config("admin-user"), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
-    if cluster.is_clustered():
-        utils.juju_log('INFO', "Creating endpoint for clustered configuration")
-        service_host = auth_host = config["vip"]
+    if is_clustered():
+        log("Creating endpoint for clustered configuration")
+        service_host = auth_host = config("vip")
     else:
-        utils.juju_log('INFO', "Creating standard endpoint")
-        service_host = auth_host = config["hostname"]
+        log("Creating standard endpoint")
+        service_host = auth_host = unit_private_ip()
 
-    for region in config['region'].split():
+    for region in config('region').split():
         create_keystone_endpoint(service_host=service_host,
-                                 service_port=config["service-port"],
+                                 service_port=config("service-port"),
                                  auth_host=auth_host,
-                                 auth_port=config["admin-port"],
+                                 auth_port=config("admin-port"),
                                  region=region)
 
 
 def create_keystone_endpoint(service_host, service_port,
                              auth_host, auth_port, region):
-    public_url = "http://%s:%s/v2.0" % (service_host, service_port)
-    admin_url = "http://%s:%s/v2.0" % (auth_host, auth_port)
-    internal_url = "http://%s:%s/v2.0" % (service_host, service_port)
+    proto = 'http'
+    if https():
+        log("Setting https keystone endpoint")
+        proto = 'https'
+    public_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
+    admin_url = "%s://%s:%s/v2.0" % (proto, auth_host, auth_port)
+    internal_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
     create_endpoint_template(region, "keystone", public_url,
                              admin_url, internal_url)
 
@@ -385,15 +499,15 @@ def update_user_password(username, password):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
-    utils.juju_log('INFO', "Updating password for user '%s'" % username)
+    log("Updating password for user '%s'" % username)
 
     user_id = manager.resolve_user_id(username)
     if user_id is None:
         error_out("Could not resolve user id for '%s'" % username)
 
     manager.api.users.update_password(user=user_id, password=password)
-    utils.juju_log('INFO', "Successfully updated password for user '%s'" % \
-                   username)
+    log("Successfully updated password for user '%s'" %
+        username)
 
 
 def load_stored_passwords(path=SERVICE_PASSWD_PATH):
@@ -425,91 +539,22 @@ def get_service_password(service_username):
     return passwd
 
 
-def configure_pki_tokens(config):
-    '''Configure PKI token signing, if enabled.'''
-    if config['enable-pki'] not in ['True', 'true']:
-        update_config_block('signing', token_format='UUID')
-    else:
-        utils.juju_log('INFO', 'TODO: PKI Support, setting to UUID for now.')
-        update_config_block('signing', token_format='UUID')
-
-
-def do_openstack_upgrade(install_src, packages):
-    '''Upgrade packages from a given install src.'''
-
-    config = config_get()
-    old_vers = get_os_codename_package('keystone')
-    new_vers = get_os_codename_install_source(install_src)
-
-    utils.juju_log('INFO',
-                   "Beginning Keystone upgrade: %s -> %s" % \
-                   (old_vers, new_vers))
-
-    # Backup previous config.
-    utils.juju_log('INFO', "Backing up contents of /etc/keystone.")
-    stamp = time.strftime('%Y%m%d%H%M')
-    cmd = 'tar -pcf /var/lib/juju/keystone-backup-%s.tar /etc/keystone' % stamp
-    execute(cmd, die=True, echo=True)
-
-    configure_installation_source(install_src)
-    execute('apt-get update', die=True, echo=True)
-    os.environ['DEBIAN_FRONTEND'] = 'noninteractive'
-    cmd = 'apt-get --option Dpkg::Options::=--force-confnew -y '\
-          'dist-upgrade'
-    execute(cmd, echo=True, die=True)
-
-    # we have new, fresh config files that need updating.
-    # set the admin token, which is still stored in config.
-    set_admin_token(config['admin-token'])
-
-    # set the sql connection string if a shared-db relation is found.
-    ids = utils.relation_ids('shared-db')
-
-    if ids:
-        for rid in ids:
-            for unit in utils.relation_list(rid):
-                utils.juju_log('INFO',
-                               'Configuring new keystone.conf for '
-                               'database access on existing database'
-                               ' relation to %s' % unit)
-                relation_data = utils.relation_get_dict(relation_id=rid,
-                                                        remote_unit=unit)
-
-                update_config_block('sql', connection="mysql://%s:%s@%s/%s" %
-                                        (config["database-user"],
-                                         relation_data["password"],
-                                         relation_data["private-address"],
-                                         config["database"]))
-
-    utils.stop('keystone')
-    if (cluster.eligible_leader(CLUSTER_RES)):
-        utils.juju_log('INFO',
-                       'Running database migrations for %s' % new_vers)
-        execute('keystone-manage db_sync', echo=True, die=True)
-    else:
-        utils.juju_log('INFO',
-                       'Not cluster leader; snoozing whilst'
-                       ' leader upgrades DB')
-        time.sleep(10)
-    utils.start('keystone')
-    time.sleep(5)
-    utils.juju_log('INFO',
-                   'Completed Keystone upgrade: '
-                   '%s -> %s' % (old_vers, new_vers))
-
-
 def synchronize_service_credentials():
     '''
     Broadcast service credentials to peers or consume those that have been
     broadcasted by peer, depending on hook context.
     '''
-    if (not cluster.eligible_leader(CLUSTER_RES) or
-        not os.path.isfile(SERVICE_PASSWD_PATH)):
+    if (not eligible_leader(CLUSTER_RES) or
+            not os.path.isfile(SERVICE_PASSWD_PATH)):
         return
-    utils.juju_log('INFO', 'Synchronizing service passwords to all peers.')
-    unison.sync_to_peers(peer_interface='cluster',
-                         paths=[SERVICE_PASSWD_PATH], user=SSH_USER,
-                         verbose=True)
+    log('Synchronizing service passwords to all peers.')
+    if is_clustered():
+        unison.sync_to_peers(peer_interface='cluster',
+                             paths=[SERVICE_PASSWD_PATH], user=SSH_USER,
+                             verbose=True)
+        if config('https-service-endpoints') in ['True', 'true']:
+            unison.sync_to_peers(peer_interface='cluster',
+                                 paths=[SSL_DIR], user=SSH_USER, verbose=True)
 
 CA = []
 
@@ -527,18 +572,208 @@ def get_ca(user='keystone', group='keystone'):
                         ca_dir=os.path.join(SSL_DIR,
                                             '%s_intermediate_ca' % d_name),
                         root_ca_dir=os.path.join(SSL_DIR,
-                                            '%s_root_ca' % d_name))
+                                                 '%s_root_ca' % d_name))
         # SSL_DIR is synchronized via all peers over unison+ssh, need
         # to ensure permissions.
-        execute('chown -R %s.%s %s' % (user, group, SSL_DIR))
-        execute('chmod -R g+rwx %s' % SSL_DIR)
+        subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
+                                '%s' % SSL_DIR])
+        subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
         CA.append(ca)
     return CA[0]
 
 
-def https():
-    if (utils.config_get('https-service-endpoints') in ["yes", "true", "True"]
-        or cluster.https()):
-        return True
+def relation_list(rid):
+    cmd = [
+        'relation-list',
+        '-r', rid,
+    ]
+    result = str(subprocess.check_output(cmd)).split()
+    if result == "":
+        return None
     else:
-        return False
+        return result
+
+
+def add_service_to_keystone(relation_id=None, remote_unit=None):
+    settings = relation_get(rid=relation_id, unit=remote_unit)
+    # the minimum settings needed per endpoint
+    single = set(['service', 'region', 'public_url', 'admin_url',
+                  'internal_url'])
+    if single.issubset(settings):
+        # other end of relation advertised only one endpoint
+        if 'None' in [v for k, v in settings.iteritems()]:
+            # Some backend services advertise no endpoint but require a
+            # hook execution to update auth strategy.
+            relation_data = {}
+            # Check if clustered and use vip + haproxy ports if so
+            if is_clustered():
+                relation_data["auth_host"] = config('vip')
+                relation_data["service_host"] = config('vip')
+            else:
+                relation_data["auth_host"] = unit_private_ip()
+                relation_data["service_host"] = unit_private_ip()
+            if https():
+                relation_data["auth_protocol"] = "https"
+                relation_data["service_protocol"] = "https"
+            else:
+                relation_data["auth_protocol"] = "http"
+                relation_data["service_protocol"] = "http"
+            relation_data["auth_port"] = config('admin-port')
+            relation_data["service_port"] = config('service-port')
+            if config('https-service-endpoints') in ['True', 'true']:
+                # Pass CA cert as client will need it to
+                # verify https connections
+                ca = get_ca(user=SSH_USER)
+                ca_bundle = ca.get_ca_bundle()
+                relation_data['https_keystone'] = 'True'
+                relation_data['ca_cert'] = b64encode(ca_bundle)
+            # Allow the remote service to request creation of any additional
+            # roles. Currently used by Horizon
+            for role in get_requested_roles(settings):
+                log("Creating requested role: %s" % role)
+                create_role(role)
+            relation_set(relation_id=relation_id,
+                         **relation_data)
+            return
+        else:
+            ensure_valid_service(settings['service'])
+            add_endpoint(region=settings['region'],
+                         service=settings['service'],
+                         publicurl=settings['public_url'],
+                         adminurl=settings['admin_url'],
+                         internalurl=settings['internal_url'])
+            service_username = settings['service']
+            https_cn = urlparse.urlparse(settings['internal_url'])
+            https_cn = https_cn.hostname
+    else:
+        # assemble multiple endpoints from relation data. service name
+        # should be prepended to setting name, ie:
+        #  realtion-set ec2_service=$foo ec2_region=$foo ec2_public_url=$foo
+        #  relation-set nova_service=$foo nova_region=$foo nova_public_url=$foo
+        # Results in a dict that looks like:
+        # { 'ec2': {
+        #       'service': $foo
+        #       'region': $foo
+        #       'public_url': $foo
+        #   }
+        #   'nova': {
+        #       'service': $foo
+        #       'region': $foo
+        #       'public_url': $foo
+        #   }
+        # }
+        endpoints = {}
+        for k, v in settings.iteritems():
+            ep = k.split('_')[0]
+            x = '_'.join(k.split('_')[1:])
+            if ep not in endpoints:
+                endpoints[ep] = {}
+            endpoints[ep][x] = v
+        services = []
+        https_cn = None
+        for ep in endpoints:
+            # weed out any unrelated relation stuff Juju might have added
+            # by ensuring each possible endpiont has appropriate fields
+            #  ['service', 'region', 'public_url', 'admin_url', 'internal_url']
+            if single.issubset(endpoints[ep]):
+                ep = endpoints[ep]
+                ensure_valid_service(ep['service'])
+                add_endpoint(region=ep['region'], service=ep['service'],
+                             publicurl=ep['public_url'],
+                             adminurl=ep['admin_url'],
+                             internalurl=ep['internal_url'])
+                services.append(ep['service'])
+                if not https_cn:
+                    https_cn = urlparse.urlparse(ep['internal_url'])
+                    https_cn = https_cn.hostname
+        service_username = '_'.join(services)
+
+    if 'None' in [v for k, v in settings.iteritems()]:
+        return
+
+    if not service_username:
+        return
+
+    token = get_admin_token()
+    log("Creating service credentials for '%s'" % service_username)
+
+    service_password = get_service_password(service_username)
+    create_user(service_username, service_password, config('service-tenant'))
+    grant_role(service_username, config('admin-role'),
+               config('service-tenant'))
+
+    # Allow the remote service to request creation of any additional roles.
+    # Currently used by Swift and Ceilometer.
+    for role in get_requested_roles(settings):
+        log("Creating requested role: %s" % role)
+        create_role(role, service_username,
+                    config('service-tenant'))
+
+    # As of https://review.openstack.org/#change,4675, all nodes hosting
+    # an endpoint(s) needs a service username and password assigned to
+    # the service tenant and granted admin role.
+    # note: config('service-tenant') is created in utils.ensure_initial_admin()
+    # we return a token, information about our API endpoints, and the generated
+    # service credentials
+    relation_data = {
+        "admin_token": token,
+        "service_host": unit_private_ip(),
+        "service_port": config("service-port"),
+        "auth_host": unit_private_ip(),
+        "auth_port": config("admin-port"),
+        "service_username": service_username,
+        "service_password": service_password,
+        "service_tenant": config('service-tenant'),
+        "https_keystone": "False",
+        "ssl_cert": "",
+        "ssl_key": "",
+        "ca_cert": ""
+    }
+
+    # Check if clustered and use vip + haproxy ports if so
+    if is_clustered():
+        relation_data["auth_host"] = config('vip')
+        relation_data["service_host"] = config('vip')
+    if https():
+        relation_data["auth_protocol"] = "https"
+        relation_data["service_protocol"] = "https"
+    else:
+        relation_data["auth_protocol"] = "http"
+        relation_data["service_protocol"] = "http"
+    # generate or get a new cert/key for service if set to manage certs.
+    if config('https-service-endpoints') in ['True', 'true']:
+        ca = get_ca(user=SSH_USER)
+        cert, key = ca.get_cert_and_key(common_name=https_cn)
+        ca_bundle = ca.get_ca_bundle()
+        relation_data['ssl_cert'] = b64encode(cert)
+        relation_data['ssl_key'] = b64encode(key)
+        relation_data['ca_cert'] = b64encode(ca_bundle)
+        relation_data['https_keystone'] = 'True'
+    relation_set(relation_id=relation_id,
+                 **relation_data)
+
+
+def ensure_valid_service(service):
+    if service not in valid_services.keys():
+        log("Invalid service requested: '%s'" % service)
+        relation_set(admin_token=-1)
+        return
+
+
+def add_endpoint(region, service, publicurl, adminurl, internalurl):
+    desc = valid_services[service]["desc"]
+    service_type = valid_services[service]["type"]
+    create_service_entry(service, service_type, desc)
+    create_endpoint_template(region=region, service=service,
+                             publicurl=publicurl,
+                             adminurl=adminurl,
+                             internalurl=internalurl)
+
+
+def get_requested_roles(settings):
+    ''' Retrieve any valid requested_roles from dict settings '''
+    if ('requested_roles' in settings and
+            settings['requested_roles'] not in ['None', None]):
+        return settings['requested_roles'].split(',')
+    else:
+        return []

@@ -1,10 +1,12 @@
 #!/usr/bin/python
 
+import base64
 import os
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import zipfile
 
 CA_EXPIRY = '365'
 ORG_NAME = 'Ubuntu'
@@ -113,7 +115,7 @@ def init_ca(ca_dir, common_name, org_name=ORG_NAME, org_unit_name=ORG_UNIT):
         if not os.path.exists(d):
             print 'Creating %s.' % d
             os.mkdir(d)
-    os.chmod(os.path.join(ca_dir, 'private'), 0710)
+    os.chmod(os.path.join(ca_dir, 'private'), 0o710)
 
     if not os.path.isfile(os.path.join(ca_dir, 'serial')):
         with open(os.path.join(ca_dir, 'serial'), 'wb') as out:
@@ -161,7 +163,7 @@ def intermediate_ca_csr_key(ca_dir):
 def sign_int_csr(ca_dir, csr, common_name):
     print 'Signing certificate request %s.' % csr
     crt = os.path.join(ca_dir, 'certs',
-                        '%s.crt' % os.path.basename(csr).split('.')[0])
+                       '%s.crt' % os.path.basename(csr).split('.')[0])
     subj = '/O=%s/OU=%s/CN=%s' % (ORG_NAME, ORG_UNIT, common_name)
     cmd = ['openssl', 'ca', '-batch', '-config',
            os.path.join(ca_dir, 'ca.cnf'),
@@ -238,6 +240,7 @@ def tar_directory(path):
 
 
 class JujuCA(object):
+
     def __init__(self, name, ca_dir, root_ca_dir, user, group):
         root_crt, root_key = init_root_ca(root_ca_dir,
                                           '%s Certificate Authority' % name)
@@ -288,7 +291,7 @@ class JujuCA(object):
                 key = open(key, 'r').read()
             except:
                 print 'Could not load ssl private key for %s from %s' %\
-                     (common_name, key)
+                    (common_name, key)
                 exit(1)
             return crt, key
         crt, key = self._create_certificate(common_name, common_name)
