@@ -552,7 +552,7 @@ def synchronize_service_credentials():
         unison.sync_to_peers(peer_interface='cluster',
                              paths=[SERVICE_PASSWD_PATH], user=SSH_USER,
                              verbose=True)
-        if config('http-service-endpoints') in ['True', 'true']:
+        if config('https-service-endpoints') in ['True', 'true']:
             unison.sync_to_peers(peer_interface='cluster',
                                  paths=[SSL_DIR], user=SSH_USER, verbose=True)
 
