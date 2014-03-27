@@ -119,7 +119,7 @@ def db_changed():
             # Ensure any existing service entries are updated in the
             # new database backend
             for rid in relation_ids('identity-service'):
-                for unit in related_units(rid=rid):
+                for unit in related_units(rid):
                     identity_changed(relation_id=rid, remote_unit=unit)
 
 
