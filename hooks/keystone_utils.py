@@ -246,7 +246,10 @@ def migrate_database():
     '''Runs keystone-manage to initialize a new database or migrate existing'''
     log('Migrating the keystone database.', level=INFO)
     service_stop('keystone')
-    cmd = ['keystone-manage', 'db_sync']
+    # NOTE(jamespage) > icehouse creates a log file as root so use
+    # sudo to execute as keystone otherwise keystone won't start
+    # afterwards.
+    cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
     service_start('keystone')
     time.sleep(10)
