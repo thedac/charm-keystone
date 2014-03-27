@@ -16,6 +16,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     relation_ids,
     relation_set,
+    related_units,
     unit_get,
 )
 
@@ -115,6 +116,11 @@ def db_changed():
         if eligible_leader(CLUSTER_RES):
             migrate_database()
             ensure_initial_admin(config)
+            # Ensure any existing service entries are updated in the
+            # new database backend
+            for rid in relation_ids('identity-service'):
+                for unit in related_units(rid=rid):
+                    identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('identity-service-relation-joined')
