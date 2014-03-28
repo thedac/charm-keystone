@@ -223,7 +223,11 @@ def configure_https():
 @restart_on_change(restart_map(), stopstart=True)
 def upgrade_charm():
     apt_install(filter_installed_packages(determine_packages()))
-    cluster_changed()
+    unison.ssh_authorized_peers(user=SSH_USER,
+                                group='keystone',
+                                peer_interface='cluster',
+                                ensure_local_user=True)
+    synchronize_ca()
     if eligible_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration'
             ' is up to date')
