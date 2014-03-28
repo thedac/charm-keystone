@@ -151,7 +151,8 @@ def cluster_joined():
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
-    peer_echo()
+    # NOTE(jamespage) re-echo passwords for peer storage
+    peer_echo(includes=['_passwd'])
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',

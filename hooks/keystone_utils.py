@@ -537,16 +537,18 @@ def _migrate_service_passwords():
         log('Migrating on-disk stored passwords to peer storage')
         creds = load_stored_passwords()
         for k, v in creds.iteritems():
-            peer_store(key=k, value=v)
+            peer_store(key="{}_passwd".format(k), value=v)
         os.unlink(SERVICE_PASSWD_PATH)
 
 
 def get_service_password(service_username):
     _migrate_service_passwords()
-    passwd = peer_retrieve(service_username)
+    peer_key = "{}_passwd".format(service_username)
+    passwd = peer_retrieve(peer_key)
     if passwd is None:
         passwd = pwgen(length=64)
-        peer_store(key=service_username, value=passwd)
+        peer_store(key=peer_key,
+                   value=passwd)
     return passwd
 
 
