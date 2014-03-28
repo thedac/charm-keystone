@@ -96,7 +96,7 @@ class KeystoneContext(context.OSContextGenerator):
     def __call__(self):
         from keystone_utils import api_port, set_admin_token
         ctxt = {}
-        ctxt['token'] = set_admin_token()
+        ctxt['token'] = set_admin_token(config('admin-token'))
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'))
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'))
         ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
