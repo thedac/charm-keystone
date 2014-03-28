@@ -38,6 +38,7 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.fetch import (
     apt_install,
     apt_update,
+    apt_upgrade,
 )
 
 from charmhelpers.core.host import (
@@ -237,7 +238,7 @@ def do_openstack_upgrade(configs):
         '--option', 'Dpkg::Options::=--force-confnew',
         '--option', 'Dpkg::Options::=--force-confdef',
     ]
-
+    apt_upgrade(options=dpkg_opts, fatal=True, dist=True)
     apt_install(packages=determine_packages(), options=dpkg_opts, fatal=True)
 
     # set CONFIGS to load templates from new release and regenerate config
@@ -284,15 +285,12 @@ def set_admin_token(admin_token='None'):
             msg = 'Loading a previously generated' \
                   ' admin token from %s' % STORED_TOKEN
             log(msg)
-            f = open(STORED_TOKEN, 'r')
-            token = f.read().strip()
-            f.close()
+            with open(STORED_TOKEN, 'r') as f:
+                token = f.read().strip()
         else:
-            cmd = ['pwgen', '-c', '32', '1']
-            token = str(subprocess.check_output(cmd)).strip()
-            out = open(STORED_TOKEN, 'w')
-            out.write('%s\n' % token)
-            out.close()
+            token = pwgen(length=64)
+            with open(STORED_TOKEN, 'w') as out:
+                out.write('%s\n' % token)
     return(token)
 
 
