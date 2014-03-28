@@ -43,6 +43,12 @@ from charmhelpers.fetch import (
 from charmhelpers.core.host import (
     service_stop,
     service_start,
+    pwgen
+)
+
+from charmhelpers.contrib.peerstorage import (
+    peer_store,
+    peer_retrieve,
 )
 
 import keystone_context
@@ -525,36 +531,34 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
     return creds
 
 
-def save_stored_passwords(path=SERVICE_PASSWD_PATH, **creds):
-    with open(path, 'wb') as stored_passwd:
-        [stored_passwd.write('%s:%s\n' % (u, p)) for u, p in creds.iteritems()]
+def _migrate_service_passwords():
+    ''' Migrate on-disk service passwords to peer storage '''
+    if os.path.exists(SERVICE_PASSWD_PATH):
+        log('Migrating on-disk stored passwords to peer storage')
+        creds = load_stored_passwords()
+        for k, v in creds.iteritems():
+            peer_store(key=k, value=v)
+        os.unlink(SERVICE_PASSWD_PATH)
 
 
 def get_service_password(service_username):
-    creds = load_stored_passwords()
-    if service_username in creds:
-        return creds[service_username]
-
-    passwd = subprocess.check_output(['pwgen', '-c', '32', '1']).strip()
-    creds[service_username] = passwd
-    save_stored_passwords(**creds)
-
+    _migrate_service_passwords()
+    passwd = peer_retrieve(service_username)
+    if passwd is None:
+        passwd = pwgen(length=64)
+        peer_store(key=service_username, value=passwd)
     return passwd
 
 
-def synchronize_service_credentials():
+def synchronize_ca():
     '''
     Broadcast service credentials to peers or consume those that have been
     broadcasted by peer, depending on hook context.
     '''
-    if (not eligible_leader(CLUSTER_RES) or
-            not os.path.isfile(SERVICE_PASSWD_PATH)):
+    if not eligible_leader(CLUSTER_RES):
         return
-    log('Synchronizing service passwords to all peers.')
+    log('Synchronizing CA to all peers.')
     if is_clustered():
-        unison.sync_to_peers(peer_interface='cluster',
-                             paths=[SERVICE_PASSWD_PATH], user=SSH_USER,
-                             verbose=True)
         if config('https-service-endpoints') in ['True', 'true']:
             unison.sync_to_peers(peer_interface='cluster',
                                  paths=[SSL_DIR], user=SSH_USER, verbose=True)

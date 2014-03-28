@@ -42,7 +42,7 @@ from keystone_utils import (
     ensure_initial_admin,
     migrate_database,
     save_script_rc,
-    synchronize_service_credentials,
+    synchronize_ca,
     register_configs,
     relation_list,
     restart_map,
@@ -58,6 +58,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.payload.execd import execd_preinstall
+from charmhelpers.contrib.peerstorage import peer_echo
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -133,7 +134,7 @@ def identity_joined():
 def identity_changed(relation_id=None, remote_unit=None):
     if eligible_leader(CLUSTER_RES):
         add_service_to_keystone(relation_id, remote_unit)
-        synchronize_service_credentials()
+        synchronize_ca()
     else:
         log('Deferring identity_changed() to service leader.')
 
@@ -150,11 +151,12 @@ def cluster_joined():
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
+    peer_echo()
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
-    synchronize_service_credentials()
+    synchronize_ca()
     CONFIGS.write_all()
 
 

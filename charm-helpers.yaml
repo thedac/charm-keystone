@@ -10,3 +10,4 @@ include:
         - cluster
     - contrib.unison
     - payload.execd
+    - contrib.peerstorage
