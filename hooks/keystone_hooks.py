@@ -237,7 +237,7 @@ def ha_changed():
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
         for rid in relation_ids('identity-service'):
-            relation_set(rid=rid,
+            relation_set(relation_id=rid,
                          auth_host=config('vip'),
                          service_host=config('vip'))
 
