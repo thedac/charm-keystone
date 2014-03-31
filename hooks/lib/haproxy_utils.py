@@ -14,8 +14,7 @@ from lib.utils import (
     relation_get,
     unit_get,
     reload,
-    render_template
-    )
+    render_template)
 import os
 
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
@@ -44,8 +43,7 @@ def configure_haproxy(service_ports):
                              unit=unit)
     context = {
         'units': cluster_hosts,
-        'service_ports': service_ports
-        }
+        'service_ports': service_ports}
     with open(HAPROXY_CONF, 'w') as f:
         f.write(render_template(os.path.basename(HAPROXY_CONF),
                                 context))

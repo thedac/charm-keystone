@@ -12,7 +12,9 @@ from charmhelpers.core.hookenv import (
     Hooks,
     UnregisteredHookError,
     config,
+    is_relation_made,
     log,
+    ERROR,
     relation_get,
     relation_ids,
     relation_set,
@@ -102,9 +104,28 @@ def config_changed():
 
 @hooks.hook('shared-db-relation-joined')
 def db_joined():
+    if is_relation_made('pgsql-db'):
+        # error, postgresql is used
+        e = ('Attempting to associate a mysql database when there is already '
+             'associated a postgresql one')
+        log(e, level=ERROR)
+        raise Exception(e)
+
     relation_set(database=config('database'),
                  username=config('database-user'),
                  hostname=unit_get('private-address'))
+
+
+@hooks.hook('pgsql-db-relation-joined')
+def pgsql_db_joined():
+    if is_relation_made('shared-db'):
+        # raise error
+        e = ('Attempting to associate a postgresql database when there is already '
+             'associated a mysql one')
+        log(e, level=ERROR)
+        raise Exception(e)
+
+    relation_set(database=config('database'))
 
 
 @hooks.hook('shared-db-relation-changed')
@@ -112,6 +133,23 @@ def db_joined():
 def db_changed():
     if 'shared-db' not in CONFIGS.complete_contexts():
         log('shared-db relation incomplete. Peer not ready?')
+    else:
+        CONFIGS.write(KEYSTONE_CONF)
+        if eligible_leader(CLUSTER_RES):
+            migrate_database()
+            ensure_initial_admin(config)
+            # Ensure any existing service entries are updated in the
+            # new database backend
+            for rid in relation_ids('identity-service'):
+                for unit in related_units(rid):
+                    identity_changed(relation_id=rid, remote_unit=unit)
+
+
+@hooks.hook('pgsql-db-relation-changed')
+@restart_on_change(restart_map())
+def pgsql_db_changed():
+    if 'pgsql-db' not in CONFIGS.complete_contexts():
+        log('pgsql-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
         if eligible_leader(CLUSTER_RES):

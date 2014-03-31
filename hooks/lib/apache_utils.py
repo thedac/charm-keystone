@@ -17,8 +17,7 @@ from lib.utils import (
     config_get,
     install,
     get_host_ip,
-    restart
-    )
+    restart)
 from lib.cluster_utils import https
 
 import os
@@ -136,8 +135,7 @@ def enable_https(port_maps, namespace, cert, key, ca_cert=None):
                 "ext": ext_port,
                 "int": int_port,
                 "namespace": namespace,
-                "private_address": get_host_ip()
-                }
+                "private_address": get_host_ip()}
             fsite.write(render_template(SITE_TEMPLATE,
                                         context))
 
@@ -160,7 +158,7 @@ def disable_https(port_maps, namespace):
     juju_log('INFO', 'Ensuring HTTPS disabled for {}'.format(port_maps))
 
     if (not os.path.exists('/etc/apache2') or
-        not os.path.exists(os.path.join('/etc/apache2/ssl', namespace))):
+            not os.path.exists(os.path.join('/etc/apache2/ssl', namespace))):
         return
 
     http_restart = False
