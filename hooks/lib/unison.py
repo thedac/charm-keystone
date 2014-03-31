@@ -73,15 +73,14 @@ def get_keypair(user):
 
     pub_key = '%s.pub' % priv_key
     if not os.path.isfile(pub_key):
-        utils.juju_log('INFO', 'Generatring missing ssh public key @ %s.' % \
+        utils.juju_log('INFO', 'Generatring missing ssh public key @ %s.' %
                        pub_key)
         cmd = ['ssh-keygen', '-y', '-f', priv_key]
         p = subprocess.check_output(cmd).strip()
         with open(pub_key, 'wb') as out:
             out.write(p)
     subprocess.check_call(['chown', '-R', user, ssh_dir])
-    return open(priv_key, 'r').read().strip(), \
-           open(pub_key, 'r').read().strip()
+    return open(priv_key, 'r').read().strip(), open(pub_key, 'r').read().strip()
 
 
 def write_authorized_keys(user, keys):
@@ -149,7 +148,7 @@ def ssh_authorized_peers(peer_interface, user, group=None, ensure_local_user=Fal
                     hosts.append(settings['private-address'])
                 else:
                     utils.juju_log('INFO',
-                                   'ssh_authorized_peers(): ssh_pub_key '\
+                                   'ssh_authorized_peers(): ssh_pub_key '
                                    'missing for unit %s, skipping.' % unit)
         write_authorized_keys(user, keys)
         write_known_hosts(user, hosts)
@@ -204,8 +203,7 @@ def sync_to_peers(peer_interface, user, paths=[], verbose=False):
                 hosts.append(settings['private-address'])
             else:
                 print 'unison sync_to_peers: peer (%s) has not authorized '\
-                      '*this* host yet, skipping.' %\
-                       settings['private-address']
+                      '*this* host yet, skipping.' % settings['private-address']
 
     for path in paths:
         # removing trailing slash from directory paths, unison
@@ -214,7 +212,6 @@ def sync_to_peers(peer_interface, user, paths=[], verbose=False):
             path = path[:(len(path) - 1)]
         for host in hosts:
             cmd = base_cmd + [path, 'ssh://%s@%s/%s' % (user, host, path)]
-            utils.juju_log('INFO', 'Syncing local path %s to %s@%s:%s' %\
-                            (path, user, host, path))
-            print ' '.join(cmd)
+            utils.juju_log('INFO', 'Syncing local path %s to %s@%s:%s' %
+                           (path, user, host, path))
             run_as_user(user, cmd)
