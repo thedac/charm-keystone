@@ -552,6 +552,11 @@ def ha_relation_joined():
                        clones=clones)
 
 
+def admin_relation_joined():
+    """ Do nothing until we get information about requested service """
+    pass
+
+
 def admin_relation_changed():
     relation_data = {
         "service_hostname": config["hostname"],
@@ -579,7 +584,8 @@ hooks = {
     "ha-relation-joined": ha_relation_joined,
     "ha-relation-changed": ha_relation_changed,
     "upgrade-charm": upgrade_charm,
-    "admin-relation-changed": admin_relation_changed,
+    "identity-admin-relation-joined": admin_relation_joined,
+    "identity-admin-relation-changed": admin_relation_changed,
 }
 
 utils.do_hooks(hooks)
