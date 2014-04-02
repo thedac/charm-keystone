@@ -604,6 +604,9 @@ def relation_list(rid):
 
 
 def add_service_to_keystone(relation_id=None, remote_unit=None):
+    import manager
+    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
+                                      token=get_admin_token())
     settings = relation_get(rid=relation_id, unit=remote_unit)
     # the minimum settings needed per endpoint
     single = set(['service', 'region', 'public_url', 'admin_url',
@@ -724,6 +727,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # note: config('service-tenant') is created in utils.ensure_initial_admin()
     # we return a token, information about our API endpoints, and the generated
     # service credentials
+    service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
         "service_host": unit_private_ip(),
@@ -732,7 +736,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
-        "service_tenant": config('service-tenant'),
+        "service_tenant": service_tenant,
+        "service_tenant_id": manager.resolve_tenant_id(service_tenant),
         "https_keystone": "False",
         "ssl_cert": "",
         "ssl_key": "",
