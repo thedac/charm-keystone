@@ -58,6 +58,7 @@ TO_PATCH = [
     'execd_preinstall',
     'mkdir',
     'os',
+    'time',
 ]
 
 
