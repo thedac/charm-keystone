@@ -156,7 +156,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertEquals([call('/etc/keystone/keystone.conf')],
                           configs.write.call_args_list)
         self.migrate_database.assert_called_with()
-        self.ensure_initial_admin.assert_called()
+        self.assertTrue(self.ensure_initial_admin.called)
         identity_changed.assert_called_with(relation_id='identity-service:0', remote_unit='unit/0')
 
     @patch.object(hooks, 'CONFIGS')
@@ -169,7 +169,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertEquals([call('/etc/keystone/keystone.conf')],
                           configs.write.call_args_list)
         self.migrate_database.assert_called_with()
-        self.ensure_initial_admin.assert_called()
+        self.assertTrue(self.ensure_initial_admin.called)
         identity_changed.assert_called_with(relation_id='identity-service:0', remote_unit='unit/0')
 
     @patch.object(unison, 'ensure_user')
@@ -192,7 +192,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
 
         self.migrate_database.assert_called_with()
-        self.ensure_initial_admin.assert_called()
+        self.assertTrue(self.ensure_initial_admin.called)
         self.log.assert_called_with('Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(relation_id='identity-service:0', remote_unit='unit/0')
 
@@ -232,14 +232,14 @@ class KeystoneRelationTests(CharmTestCase):
         ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
         get_homedir.assert_called_with(self.ssh_user)
 
-        self.do_openstack_upgrade.assert_called()
+        self.assertTrue(self.do_openstack_upgrade.called)
 
         self.save_script_rc.assert_called_with()
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
 
         self.migrate_database.assert_called_with()
-        self.ensure_initial_admin.assert_called()
+        self.assertTrue(self.ensure_initial_admin.called)
         self.log.assert_called_with('Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(relation_id='identity-service:0', remote_unit='unit/0')
 
@@ -247,7 +247,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.eligible_leader.return_value = True
         hooks.identity_changed(relation_id='identity-service:0', remote_unit='unit/0')
         self.add_service_to_keystone.assert_called_with('identity-service:0', 'unit/0')
-        self.synchronize_ca.assert_called()
+        self.assertTrue(self.synchronize_ca.called)
 
     def test_identity_changed_no_leader(self):
         self.eligible_leader.return_value = False
@@ -268,7 +268,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.peer_echo.assert_called_with(includes=['_passwd'])
         ssh_authorized_peers.assert_called_with(user=self.ssh_user, group='keystone',
                                                 peer_interface='cluster', ensure_local_user=True)
-        self.synchronize_ca.assert_called()
+        self.assertTrue(self.synchronize_ca.called)
         self.assertTrue(configs.write_all.called)
 
     def test_ha_joined(self):
@@ -280,7 +280,7 @@ class KeystoneRelationTests(CharmTestCase):
             'vip_cidr': '24'
         }
         hooks.ha_joined()
-        self.get_hacluster_config.assert_called()
+        self.assertTrue(self.get_hacluster_config.called)
         args = {
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
@@ -345,22 +345,22 @@ class KeystoneRelationTests(CharmTestCase):
         self.eligible_leader.return_value = True
         self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
-        self.apt_install.assert_called()
+        self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(user=self.ssh_user, group='keystone',
                                                 peer_interface='cluster', ensure_local_user=True)
-        self.synchronize_ca.assert_called()
+        self.assertTrue(self.synchronize_ca.called)
         self.log.assert_called_with('Cluster leader - ensuring endpoint configuration'
                                     ' is up to date')
-        self.ensure_initial_admin.assert_called()
+        self.assertTrue(self.ensure_initial_admin.called)
 
     @patch.object(unison, 'ssh_authorized_peers')
     def test_upgrade_charm_not_leader(self, ssh_authorized_peers):
         self.eligible_leader.return_value = False
         self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
-        self.apt_install.assert_called()
+        self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(user=self.ssh_user, group='keystone',
                                                 peer_interface='cluster', ensure_local_user=True)
-        self.synchronize_ca.assert_called()
+        self.assertTrue(self.synchronize_ca.called)
         self.assertFalse(self.log.called)
         self.assertFalse(self.ensure_initial_admin.called)

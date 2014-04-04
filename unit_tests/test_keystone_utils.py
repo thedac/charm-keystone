@@ -116,7 +116,7 @@ class TestKeystoneUtils(CharmTestCase):
 
         self.get_os_codename_install_source.assert_called_with('precise')        
         self.configure_installation_source.assert_called_with('precise')
-        self.apt_update.assert_called()
+        self.assertTrue(self.apt_update.called)
 
         dpkg_opts = [
             '--option', 'Dpkg::Options::=--force-confnew',
@@ -127,8 +127,7 @@ class TestKeystoneUtils(CharmTestCase):
 
         self.assertTrue(configs.set_release.called)
         self.assertTrue(configs.write_all.called)
-
-        migrate_database.assert_called()
+        self.assertTrue(migrate_database.called)
 
     def test_migrate_database(self):
         utils.migrate_database()
@@ -158,9 +157,9 @@ class TestKeystoneUtils(CharmTestCase):
                                           'internal_url': '192.168.1.2'}
 
         utils.add_service_to_keystone(relation_id=relation_id, remote_unit=remote_unit)
-        self.is_clustered.assert_called()
-        self.https.assert_called()
-        self.create_role.assert_called()
+        self.assertTrue(self.is_clustered.called)
+        self.assertTrue(self.https.called)
+        self.assertTrue(self.create_role.called)
 
         relation_data = {'auth_host': '10.10.10.10',
                          'service_host': '10.10.10.10',
@@ -206,13 +205,13 @@ class TestKeystoneUtils(CharmTestCase):
         add_endpoint.assert_called_with(region='RegionOne', service='keystone',
                                         publicurl='10.0.0.1', adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
-        self.get_admin_token.assert_called()
+        self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
         self.create_user.assert_called_with('keystone', 'password', 'tenant')
         self.grant_role.assert_called_with('keystone', 'admin', 'tenant')
         self.create_role.assert_called_with('role1', 'keystone', 'tenant')
 
-        self.is_clustered.assert_called()
+        self.assertTrue(self.is_clustered.called)
         relation_data = {'admin_token': 'token', 'service_port':81,
                          'auth_port':80, 'service_username':'keystone',
                          'service_password': 'password', 'service_tenant': 'tenant',
