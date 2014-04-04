@@ -272,6 +272,11 @@ def upgrade_charm():
             ' is up to date')
         time.sleep(10)
         ensure_initial_admin(config)
+        # Deal with interface changes for icehouse
+        for r_id in relation_ids('identity-service'):
+            for unit in relation_list(r_id):
+                identity_changed(relation_id=r_id,
+                                 remote_unit=unit)
     CONFIGS.write_all()
 
 

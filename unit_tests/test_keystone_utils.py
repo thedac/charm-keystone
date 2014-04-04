@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from collections import OrderedDict
 import os
+import manager
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -11,7 +12,6 @@ with patch('charmhelpers.core.hookenv.config') as config:
 
 import keystone_context
 import keystone_hooks as hooks
-import manager
 from charmhelpers.contrib.openstack import context
 
 TO_PATCH = [
@@ -175,7 +175,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(manager, 'KeystoneManager')
-    def test_add_service_to_keystone_no_clustered_no_https_complete_values(self, manager, add_endpoint, ensure_valid_service):
+    def test_add_service_to_keystone_no_clustered_no_https_complete_values(self, KeystoneManager, add_endpoint, ensure_valid_service):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -189,7 +189,11 @@ class TestKeystoneUtils(CharmTestCase):
         self.is_clustered.return_value = False
         self.https.return_value = False
         self.test_config.set('https-service-endpoints', 'False')
-        manager.resolve_tenant_id.return_value = 'tenant_id'
+        self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
+
+        mock_keystone = MagicMock()
+        mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
+        KeystoneManager.return_value = mock_keystone
 
         self.relation_get.return_value = {'service': 'keystone',
                                           'region': 'RegionOne',
@@ -212,14 +216,16 @@ class TestKeystoneUtils(CharmTestCase):
         relation_data = {'admin_token': 'token', 'service_port':81,
                          'auth_port':80, 'service_username':'keystone',
                          'service_password': 'password', 'service_tenant': 'tenant',
-                         'https_keystone': 'False', 'ssl_cert': '', 'ssl_key': '', 'ca_cert': '',
-                         'auth_host':'10.0.0.3', 'service_host': '10.0.0.3',
-                         'auth_protocol': 'http', 'service_protocol': 'http'}
+                         'https_keystone': 'False', 'ssl_cert': '', 'ssl_key': '',
+                         'ca_cert': '', 'auth_host':'10.0.0.3', 'service_host': '10.0.0.3',
+                         'auth_protocol': 'http', 'service_protocol': 'http',
+                         'service_tenant_id': 'tenant_id'}
         self.relation_set.assert_called_with(relation_id=relation_id, **relation_data)
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
-    def test_add_service_to_keystone_nosubset(self, add_endpoint, ensure_valid_service):
+    @patch.object(manager, 'KeystoneManager')
+    def test_add_service_to_keystone_nosubset(self, KeystoneManager, add_endpoint, ensure_valid_service):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
 
@@ -228,6 +234,8 @@ class TestKeystoneUtils(CharmTestCase):
                                           'ec2_public_url': '10.0.0.1',
                                           'ec2_admin_url': '10.0.0.2',
                                           'ec2_internal_url': '192.168.1.2'}
+        self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
+        KeystoneManager.resolve_tenant_id.return_value = 'tenant_id'
 
         utils.add_service_to_keystone(relation_id=relation_id, remote_unit=remote_unit)
         ensure_valid_service.assert_called_with('nova')
