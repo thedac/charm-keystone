@@ -26,6 +26,7 @@ TO_PATCH = [
     'config',
     'is_relation_made',
     'log',
+    'filter_installed_packages',
     'relation_ids',
     'relation_list',
     'relation_set',
@@ -342,9 +343,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(unison, 'ssh_authorized_peers')
     def test_upgrade_charm_leader(self, ssh_authorized_peers):
         self.eligible_leader.return_value = True
+        self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
-        self.apt_install.assert_called_with(['haproxy', 'unison', 'uuid', 'python-mysqldb',
-                                             'pwgen', 'keystone', 'python-psycopg2'])
+        self.apt_install.assert_called()
         ssh_authorized_peers.assert_called_with(user=self.ssh_user, group='keystone',
                                                 peer_interface='cluster', ensure_local_user=True)
         self.synchronize_ca.assert_called()
@@ -355,9 +356,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(unison, 'ssh_authorized_peers')
     def test_upgrade_charm_not_leader(self, ssh_authorized_peers):
         self.eligible_leader.return_value = False
+        self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
-        self.apt_install.assert_called_with(['haproxy', 'unison', 'uuid', 'python-mysqldb',
-                                             'pwgen', 'keystone', 'python-psycopg2'])
+        self.apt_install.assert_called()
         ssh_authorized_peers.assert_called_with(user=self.ssh_user, group='keystone',
                                                 peer_interface='cluster', ensure_local_user=True)
         self.synchronize_ca.assert_called()

@@ -24,6 +24,7 @@ TO_PATCH = [
     'create_service_entry',
     'create_endpoint_template',
     'get_admin_token',
+    'get_local_endpoint',
     'get_requested_roles',
     'get_service_password',
     'get_os_codename_install_source',
