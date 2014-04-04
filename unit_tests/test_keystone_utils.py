@@ -11,6 +11,7 @@ with patch('charmhelpers.core.hookenv.config') as config:
 
 import keystone_context
 import keystone_hooks as hooks
+import manager
 from charmhelpers.contrib.openstack import context
 
 TO_PATCH = [
@@ -173,7 +174,8 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
-    def test_add_service_to_keystone_no_clustered_no_https_complete_values(self, add_endpoint, ensure_valid_service):
+    @patch.object(manager, 'KeystoneManager')
+    def test_add_service_to_keystone_no_clustered_no_https_complete_values(self, manager, add_endpoint, ensure_valid_service):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -187,6 +189,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.is_clustered.return_value = False
         self.https.return_value = False
         self.test_config.set('https-service-endpoints', 'False')
+        manager.resolve_tenant_id.return_value = 'tenant_id'
 
         self.relation_get.return_value = {'service': 'keystone',
                                           'region': 'RegionOne',
