@@ -148,7 +148,7 @@ class SharedDBContext(OSContextGenerator):
                     'database': self.database,
                     'database_user': self.user,
                     'database_password': rdata.get(password_setting),
-                    'database_type': 'mysql',
+                    'database_type': 'mysql'
                 }
                 if context_complete(ctxt):
                     db_ssl(rdata, ctxt, self.ssl_dir)
@@ -181,7 +181,7 @@ class PostgresqlDBContext(OSContextGenerator):
                     'database_type': 'postgresql',
                 }
                 if context_complete(ctxt):
-                     return ctxt
+                    return ctxt
         return {}
 
 
@@ -234,6 +234,10 @@ class IdentityServiceContext(OSContextGenerator):
                     rdata.get('auth_protocol') or 'http',
                 }
                 if context_complete(ctxt):
+                    # NOTE(jamespage) this is required for >= icehouse
+                    # so a missing value just indicates keystone needs
+                    # upgrading
+                    ctxt['admin_tenant_id'] = rdata.get('service_tenant_id')
                     return ctxt
         return {}
 
