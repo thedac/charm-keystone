@@ -1,8 +1,5 @@
 from mock import patch, call, MagicMock
 from test_utils import CharmTestCase
-from copy import deepcopy
-
-from collections import OrderedDict
 import os
 import manager
 
@@ -10,9 +7,7 @@ os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
     import keystone_utils as utils
 
-import keystone_context
 import keystone_hooks as hooks
-from charmhelpers.contrib.openstack import context
 
 TO_PATCH = [
     'api_port',
@@ -48,6 +43,7 @@ TO_PATCH = [
     'time',
     'pwgen',
 ]
+
 
 class TestKeystoneUtils(CharmTestCase):
 
@@ -88,14 +84,18 @@ class TestKeystoneUtils(CharmTestCase):
 
         ex_reg = [
             call('/etc/keystone/keystone.conf', [self.ctxt]),
-            call('/etc/apache2/sites-available/openstack_https_frontend', [self.ctxt]),
-            call('/etc/apache2/sites-available/openstack_https_frontend.conf', [self.ctxt]),
+            call(
+                '/etc/apache2/sites-available/openstack_https_frontend',
+                [self.ctxt]),
+            call(
+                '/etc/apache2/sites-available/openstack_https_frontend.conf',
+                [self.ctxt]),
         ]
         self.assertEquals(fake_renderer.register.call_args_list, ex_reg)
 
     def test_determine_ports(self):
-        self.test_config.set('admin-port','80')
-        self.test_config.set('service-port','81')
+        self.test_config.set('admin-port', '80')
+        self.test_config.set('service-port', '81')
         result = utils.determine_ports()
         self.assertEquals(result, ['80', '81'])
 
@@ -107,14 +107,15 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(utils, 'determine_packages')
     @patch.object(utils, 'migrate_database')
-    def test_openstack_upgrade_leader(self, migrate_database, determine_packages, configs):
+    def test_openstack_upgrade_leader(
+            self, migrate_database, determine_packages, configs):
         self.test_config.set('openstack-origin', 'precise')
         determine_packages.return_value = []
         self.eligible_leader.return_value = True
 
         utils.do_openstack_upgrade(configs)
 
-        self.get_os_codename_install_source.assert_called_with('precise')        
+        self.get_os_codename_install_source.assert_called_with('precise')
         self.configure_installation_source.assert_called_with('precise')
         self.assertTrue(self.apt_update.called)
 
@@ -122,8 +123,14 @@ class TestKeystoneUtils(CharmTestCase):
             '--option', 'Dpkg::Options::=--force-confnew',
             '--option', 'Dpkg::Options::=--force-confdef',
         ]
-        self.apt_upgrade.assert_called_with(options=dpkg_opts, fatal=True, dist=True)
-        self.apt_install.assert_called_with(packages=[], options=dpkg_opts, fatal=True)
+        self.apt_upgrade.assert_called_with(
+            options=dpkg_opts,
+            fatal=True,
+            dist=True)
+        self.apt_install.assert_called_with(
+            packages=[],
+            options=dpkg_opts,
+            fatal=True)
 
         self.assertTrue(configs.set_release.called)
         self.assertTrue(configs.write_all.called)
@@ -138,7 +145,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.service_start.assert_called_wkth('keystone')
 
     @patch.object(utils, 'b64encode')
-    def test_add_service_to_keystone_clustered_https_none_values(self, b64encode):
+    def test_add_service_to_keystone_clustered_https_none_values(
+            self, b64encode):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.is_clustered.return_value = True
@@ -148,7 +156,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
         b64encode.return_value = 'certificate'
-        self.get_requested_roles.return_value = ['role1',]
+        self.get_requested_roles.return_value = ['role1', ]
 
         self.relation_get.return_value = {'service': 'keystone',
                                           'region': 'RegionOne',
@@ -156,7 +164,9 @@ class TestKeystoneUtils(CharmTestCase):
                                           'admin_url': '10.0.0.2',
                                           'internal_url': '192.168.1.2'}
 
-        utils.add_service_to_keystone(relation_id=relation_id, remote_unit=remote_unit)
+        utils.add_service_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
         self.assertTrue(self.is_clustered.called)
         self.assertTrue(self.https.called)
         self.assertTrue(self.create_role.called)
@@ -169,19 +179,22 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_port': 81,
                          'https_keystone': 'True',
                          'ca_cert': 'certificate'}
-        self.relation_set.assert_called_with(relation_id=relation_id, **relation_data)
+        self.relation_set.assert_called_with(
+            relation_id=relation_id,
+            **relation_data)
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(manager, 'KeystoneManager')
-    def test_add_service_to_keystone_no_clustered_no_https_complete_values(self, KeystoneManager, add_endpoint, ensure_valid_service):
+    def test_add_service_to_keystone_no_clustered_no_https_complete_values(
+            self, KeystoneManager, add_endpoint, ensure_valid_service):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
         self.get_service_password.return_value = 'password'
         self.test_config.set('service-tenant', 'tenant')
         self.test_config.set('admin-role', 'admin')
-        self.get_requested_roles.return_value = ['role1',]
+        self.get_requested_roles.return_value = ['role1', ]
         self.unit_private_ip.return_value = '10.0.0.3'
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
@@ -200,10 +213,13 @@ class TestKeystoneUtils(CharmTestCase):
                                           'admin_url': '10.0.0.2',
                                           'internal_url': '192.168.1.2'}
 
-        utils.add_service_to_keystone(relation_id=relation_id, remote_unit=remote_unit)
+        utils.add_service_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
         ensure_valid_service.assert_called_with('keystone')
         add_endpoint.assert_called_with(region='RegionOne', service='keystone',
-                                        publicurl='10.0.0.1', adminurl='10.0.0.2',
+                                        publicurl='10.0.0.1',
+                                        adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
         self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
@@ -212,19 +228,25 @@ class TestKeystoneUtils(CharmTestCase):
         self.create_role.assert_called_with('role1', 'keystone', 'tenant')
 
         self.assertTrue(self.is_clustered.called)
-        relation_data = {'admin_token': 'token', 'service_port':81,
-                         'auth_port':80, 'service_username':'keystone',
-                         'service_password': 'password', 'service_tenant': 'tenant',
-                         'https_keystone': 'False', 'ssl_cert': '', 'ssl_key': '',
-                         'ca_cert': '', 'auth_host':'10.0.0.3', 'service_host': '10.0.0.3',
+        relation_data = {'admin_token': 'token', 'service_port': 81,
+                         'auth_port': 80, 'service_username': 'keystone',
+                         'service_password': 'password',
+                         'service_tenant': 'tenant',
+                         'https_keystone': 'False',
+                         'ssl_cert': '', 'ssl_key': '',
+                         'ca_cert': '', 'auth_host': '10.0.0.3',
+                         'service_host': '10.0.0.3',
                          'auth_protocol': 'http', 'service_protocol': 'http',
                          'service_tenant_id': 'tenant_id'}
-        self.relation_set.assert_called_with(relation_id=relation_id, **relation_data)
+        self.relation_set.assert_called_with(
+            relation_id=relation_id,
+            **relation_data)
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(manager, 'KeystoneManager')
-    def test_add_service_to_keystone_nosubset(self, KeystoneManager, add_endpoint, ensure_valid_service):
+    def test_add_service_to_keystone_nosubset(
+            self, KeystoneManager, add_endpoint, ensure_valid_service):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
 
@@ -236,11 +258,14 @@ class TestKeystoneUtils(CharmTestCase):
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         KeystoneManager.resolve_tenant_id.return_value = 'tenant_id'
 
-        utils.add_service_to_keystone(relation_id=relation_id, remote_unit=remote_unit)
+        utils.add_service_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
         ensure_valid_service.assert_called_with('nova')
         add_endpoint.assert_called_with(region='RegionOne', service='nova',
-                                             publicurl='10.0.0.1', adminurl='10.0.0.2',
-                                             internalurl='192.168.1.2')	
+                                        publicurl='10.0.0.1',
+                                        adminurl='10.0.0.2',
+                                        internalurl='192.168.1.2')
 
     def test_ensure_valid_service_incorrect(self):
         utils.ensure_valid_service('fakeservice')
@@ -251,8 +276,17 @@ class TestKeystoneUtils(CharmTestCase):
         publicurl = '10.0.0.1'
         adminurl = '10.0.0.2'
         internalurl = '10.0.0.3'
-        utils.add_endpoint('RegionOne', 'nova', publicurl, adminurl, internalurl)
-        self.create_service_entry.assert_called_with('nova', 'compute', 'Nova Compute Service')
-        self.create_endpoint_template.asssert_called_with(region='RegionOne', service='nova',
-                                                          publicurl=publicurl, adminurl=adminurl,
-                                                          internalurl=internalurl)
+        utils.add_endpoint(
+            'RegionOne',
+            'nova',
+            publicurl,
+            adminurl,
+            internalurl)
+        self.create_service_entry.assert_called_with(
+            'nova',
+            'compute',
+            'Nova Compute Service')
+        self.create_endpoint_template.asssert_called_with(
+            region='RegionOne', service='nova',
+            publicurl=publicurl, adminurl=adminurl,
+            internalurl=internalurl)

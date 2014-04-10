@@ -1,10 +1,6 @@
 import keystone_context as context
 from mock import patch
 
-with patch('charmhelpers.core.hookenv.config') as config:
-    config.return_value = 'keystone'
-    import keystone_utils as utils
-
 from test_utils import (
     CharmTestCase
 )
@@ -37,8 +33,8 @@ class TestKeystoneContexts(CharmTestCase):
         mock_is_clustered.return_value = False
 
         ctxt = context.ApacheSSLContext()
-        with patch.object(ctxt, 'enable_modules') as mock_enable_modules:
-            with patch.object(ctxt, 'configure_cert') as mock_configure_cert:
+        with patch.object(ctxt, 'enable_modules'):
+            with patch.object(ctxt, 'configure_cert'):
                 self.assertEquals(ctxt(), {'endpoints': [(34, 12)],
                                            'private_address': '1.2.3.4',
                                            'namespace': 'keystone'})
@@ -51,20 +47,27 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.relation_get')
     @patch('charmhelpers.contrib.openstack.context.log')
     @patch('__builtin__.open')
-    def test_haproxy_context_service_enabled(self, mock_open, mock_log, mock_relation_get, mock_related_units,
-                                             mock_unit_get, mock_relation_ids):
-        mock_relation_ids.return_value = ['identity-service:0',]
+    def test_haproxy_context_service_enabled(
+        self, mock_open, mock_log, mock_relation_get, mock_related_units,
+            mock_unit_get, mock_relation_ids):
+        mock_relation_ids.return_value = ['identity-service:0', ]
         mock_unit_get.return_value = '1.2.3.4'
         mock_relation_get.return_value = '10.0.0.0'
-        mock_related_units.return_value = ['unit/0',]
+        mock_related_units.return_value = ['unit/0', ]
         self.determine_apache_port.return_value = '34'
 
         ctxt = context.HAProxyContext()
 
-        self.assertEquals(ctxt(), {'listen_ports': {'admin_port': 'keystone', 'public_port': 'keystone'},
-                                   'service_ports': {'admin-port': ['keystone', '34'],
-                                                     'public-port': ['keystone', '34']},
-                                   'units': {'keystone': '1.2.3.4', 'unit-0':'10.0.0.0'}})
+        self.assertEquals(
+            ctxt(),
+            {'listen_ports': {'admin_port': 'keystone',
+                              'public_port': 'keystone'},
+             'service_ports': {'admin-port': ['keystone', '34'],
+                               'public-port': ['keystone', '34']},
+             'units': {'keystone': '1.2.3.4', 'unit-0': '10.0.0.0'}})
         mock_unit_get.assert_called_with('private-address')
-        mock_relation_get.assert_called_with('private-address', rid='identity-service:0', unit='unit/0')
+        mock_relation_get.assert_called_with(
+            'private-address',
+            rid='identity-service:0',
+            unit='unit/0')
         mock_open.assert_called_with('/etc/default/haproxy', 'w')
