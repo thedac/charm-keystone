@@ -198,10 +198,8 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
                                                  singlenode_mode=True)
 
-        debug = config('debug')
-        ctxt['debug'] = debug and bool_from_string(debug)
-        verbose = config('verbose')
-        ctxt['verbose'] = verbose and bool_from_string(verbose)
+        ctxt['debug'] = config('debug')
+        ctxt['verbose'] = config('verbose')
         ctxt['token_expiration'] = config('token-expiration')
 
         ctxt['identity_backend'] = config('identity-backend')
@@ -263,7 +261,7 @@ class KeystoneLoggingContext(context.OSContextGenerator):
     def __call__(self):
         ctxt = {}
         debug = config('debug')
-        if debug and bool_from_string(debug):
+        if debug:
             ctxt['root_level'] = 'DEBUG'
 
         return ctxt
