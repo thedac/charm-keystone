@@ -286,7 +286,11 @@ valid_services = {
     "ironic": {
         "type": "baremetal",
         "desc": "Ironic bare metal provisioning service"
-    }
+    },
+    "astara": {
+        "type": "astara",
+        "desc": "Astara Network Orchestration Service",
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
