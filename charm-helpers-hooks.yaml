@@ -1,4 +1,4 @@
-branch: lp:charm-helpers
+branch: lp:~ajkavanagh/charm-helpers/add-service-checks-lp1524388
 destination: charmhelpers
 include:
     - core

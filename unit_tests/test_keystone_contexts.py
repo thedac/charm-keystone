@@ -118,13 +118,17 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.HAProxyContext()
 
         self.maxDiff = None
+        # [ajkavangh] due to rev:514 the stat_port has changed format
+        # and stat_password (new) is dynamically generated.
+        _ctxt = ctxt()
         self.assertEquals(
             ctxt(),
             {'listen_ports': {'admin_port': '12',
                               'public_port': '12'},
              'local_host': '127.0.0.1',
              'haproxy_host': '0.0.0.0',
-             'stat_port': ':8888',
+             'stat_port': '8888',
+             'stat_password': _ctxt['stat_password'],
              'service_ports': {'admin-port': ['12', '34'],
                                'public-port': ['12', '34']},
              'default_backend': '1.2.3.4',

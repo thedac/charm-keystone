@@ -15,14 +15,13 @@
 # along with charm-helpers.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-from subprocess import check_call
+from subprocess import check_call, CalledProcessError
 from charmhelpers.fetch import (
     BaseFetchHandler,
     UnhandledSource,
     filter_installed_packages,
     apt_install,
 )
-from charmhelpers.core.host import mkdir
 
 if filter_installed_packages(['git']) != []:
     apt_install(['git'])
@@ -50,8 +49,8 @@ class GitUrlFetchHandler(BaseFetchHandler):
             cmd = ['git', '-C', dest, 'pull', source, branch]
         else:
             cmd = ['git', 'clone', source, dest, '--branch', branch]
-        if depth:
-            cmd.extend(['--depth', depth])
+            if depth:
+                cmd.extend(['--depth', depth])
         check_call(cmd)
 
     def install(self, source, branch="master", dest=None, depth=None):
@@ -62,10 +61,10 @@ class GitUrlFetchHandler(BaseFetchHandler):
         else:
             dest_dir = os.path.join(os.environ.get('CHARM_DIR'), "fetched",
                                     branch_name)
-        if not os.path.exists(dest_dir):
-            mkdir(dest_dir, perms=0o755)
         try:
             self.clone(source, dest_dir, branch, depth)
+        except CalledProcessError as e:
+            raise UnhandledSource(e)
         except OSError as e:
             raise UnhandledSource(e.strerror)
         return dest_dir
