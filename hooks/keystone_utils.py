@@ -286,6 +286,10 @@ valid_services = {
     "ironic": {
         "type": "baremetal",
         "desc": "Ironic bare metal provisioning service"
+    },
+    "designate": {
+        "type": "dns",
+        "desc": "Designate DNS service"
     }
 }
 
