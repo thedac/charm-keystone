@@ -290,7 +290,11 @@ valid_services = {
     "designate": {
         "type": "dns",
         "desc": "Designate DNS service"
-    }
+    },
+    "astara": {
+        "type": "astara",
+        "desc": "Astara Network Orchestration Service",
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
