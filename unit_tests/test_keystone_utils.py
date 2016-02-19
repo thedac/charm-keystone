@@ -758,4 +758,6 @@ class TestKeystoneUtils(CharmTestCase):
             set_os_workload_status.assert_called_with(
                 "TEST CONFIG",
                 utils.REQUIRED_INTERFACES,
-                charm_func=utils.check_optional_relations)
+                charm_func=utils.check_optional_relations,
+                services=['haproxy', 'keystone', 'apache2'],
+                ports=[5000, 35357])

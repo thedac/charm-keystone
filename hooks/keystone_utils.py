@@ -1871,4 +1871,5 @@ def assess_status(configs):
 
     # set the status according to the current state of the contexts
     set_os_workload_status(
-        configs, REQUIRED_INTERFACES, charm_func=check_optional_relations)
+        configs, REQUIRED_INTERFACES, charm_func=check_optional_relations,
+        services=services(), ports=determine_ports())
