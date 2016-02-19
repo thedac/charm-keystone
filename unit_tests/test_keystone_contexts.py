@@ -26,11 +26,9 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('keystone_utils.ensure_permissions')
     @patch('keystone_utils.determine_ports')
     @patch('keystone_utils.is_ssl_cert_master')
-    @patch('keystone_utils.is_ssl_enabled')
     @patch.object(context, 'log')
     def test_apache_ssl_context_ssl_not_master(self,
                                                mock_log,
-                                               mock_is_ssl_enabled,
                                                mock_is_ssl_cert_master,
                                                mock_determine_ports,
                                                mock_ensure_permissions,
@@ -38,7 +36,6 @@ class TestKeystoneContexts(CharmTestCase):
                                                mock_mkdir,
                                                mock_cert_provided_in_config):
         mock_cert_provided_in_config.return_value = False
-        mock_is_ssl_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = False
 
         context.ApacheSSLContext().configure_cert('foo')
@@ -49,7 +46,6 @@ class TestKeystoneContexts(CharmTestCase):
 
     @patch('keystone_utils.determine_ports')
     @patch('keystone_utils.is_ssl_cert_master')
-    @patch('keystone_utils.is_ssl_enabled')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
@@ -62,10 +58,8 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_determine_apache_port,
                                                 mock_is_clustered,
                                                 mock_config,
-                                                mock_is_ssl_enabled,
                                                 mock_is_ssl_cert_master,
                                                 mock_determine_ports):
-        mock_is_ssl_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
@@ -97,10 +91,11 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.related_units')
     @patch('charmhelpers.contrib.openstack.context.relation_get')
     @patch('charmhelpers.contrib.openstack.context.log')
+    @patch('charmhelpers.contrib.openstack.context.kv')
     @patch('__builtin__.open')
     def test_haproxy_context_service_enabled(
-        self, mock_open, mock_log, mock_relation_get, mock_related_units,
-            mock_unit_get, mock_relation_ids, mock_config,
+        self, mock_open, mock_kv, mock_log, mock_relation_get,
+            mock_related_units, mock_unit_get, mock_relation_ids, mock_config,
             mock_get_address_in_network, mock_get_netmask_for_address,
             mock_api_port):
         os.environ['JUJU_UNIT_NAME'] = 'keystone'
@@ -114,13 +109,11 @@ class TestKeystoneContexts(CharmTestCase):
         mock_get_netmask_for_address.return_value = '255.255.255.0'
         self.determine_apache_port.return_value = '34'
         mock_api_port.return_value = '12'
+        mock_kv().get.return_value = 'abcdefghijklmnopqrstuvwxyz123456'
 
         ctxt = context.HAProxyContext()
 
         self.maxDiff = None
-        # [ajkavangh] due to rev:514 the stat_port has changed format
-        # and stat_password (new) is dynamically generated.
-        _ctxt = ctxt()
         self.assertEquals(
             ctxt(),
             {'listen_ports': {'admin_port': '12',
@@ -128,7 +121,7 @@ class TestKeystoneContexts(CharmTestCase):
              'local_host': '127.0.0.1',
              'haproxy_host': '0.0.0.0',
              'stat_port': '8888',
-             'stat_password': _ctxt['stat_password'],
+             'stat_password': 'abcdefghijklmnopqrstuvwxyz123456',
              'service_ports': {'admin-port': ['12', '34'],
                                'public-port': ['12', '34']},
              'default_backend': '1.2.3.4',

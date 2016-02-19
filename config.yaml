@@ -1,11 +1,11 @@
 options:
   debug:
-    default: "false"
-    type: string
+    type: boolean
+    default: False
     description: Enable verbose logging.
   verbose:
-    default: "false"
-    type: string
+    type: boolean
+    default: False
     description: Enable debug logging.
   use-syslog:
     type: boolean
