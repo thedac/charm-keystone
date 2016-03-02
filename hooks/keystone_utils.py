@@ -2024,6 +2024,16 @@ def assess_status_func(configs):
         services=services(), ports=determine_ports())
 
 
+def get_admin_domain_id():
+    domain_id = None
+    if os.path.isfile(STORED_ADMIN_DOMAIN_ID):
+        log("Loading stored domain id from %s" % STORED_ADMIN_DOMAIN_ID,
+            level=INFO)
+        with open(STORED_ADMIN_DOMAIN_ID, 'r') as fd:
+            domain_id = fd.readline().strip('\n')
+    return domain_id
+
+
 def pause_unit_helper(configs):
     """Helper function to pause a unit, and then call assess_status(...) in
     effect, so that the status is correctly updated.

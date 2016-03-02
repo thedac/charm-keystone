@@ -734,6 +734,23 @@ class TestKeystoneUtils(CharmTestCase):
         utils.delete_service_entry('bob', 'bill')
         mock_keystone.api.services.delete.assert_called_with('sid1')
 
+    @patch('os.path.isfile')
+    def test_get_admin_domain_id(self, isfile_mock):
+        isfile_mock.return_value = False
+        x = utils.get_admin_domain_id()
+        assert x is None
+        from sys import version_info
+        if version_info.major == 2:
+            import __builtin__ as builtins
+        else:
+            import builtins
+        from mock import mock_open
+        with patch.object(builtins, 'open', mock_open(
+                read_data="some_data\n")):
+            isfile_mock.return_value = True
+            x = utils.get_admin_domain_id()
+            self.assertEquals(x, 'some_data')
+
     def test_assess_status(self):
         with patch.object(utils, 'assess_status_func') as asf:
             callee = MagicMock()
