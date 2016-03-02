@@ -6,9 +6,6 @@ os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
     import keystone_utils as utils
 
-with patch.object(utils, 'register_configs'):
-    import keystone_hooks as hooks
-
 TO_PATCH = [
     'api_port',
     'config',
@@ -131,11 +128,11 @@ class TestKeystoneUtils(CharmTestCase):
             ex.remove(p)
         self.assertEquals(set(ex), set(result))
 
-    @patch.object(hooks, 'CONFIGS')
     @patch.object(utils, 'determine_packages')
     @patch.object(utils, 'migrate_database')
     def test_openstack_upgrade_leader(
-            self, migrate_database, determine_packages, configs):
+            self, migrate_database, determine_packages):
+        configs = MagicMock()
         self.test_config.set('openstack-origin', 'precise')
         determine_packages.return_value = []
         self.is_elected_leader.return_value = True
@@ -737,38 +734,48 @@ class TestKeystoneUtils(CharmTestCase):
         utils.delete_service_entry('bob', 'bill')
         mock_keystone.api.services.delete.assert_called_with('sid1')
 
-    @patch.object(utils, 'HookData')
-    @patch.object(utils, 'kv')
-    def test_is_paused(self, kv, HookData):
-        """test_is_paused: Test is_paused() returns value
-        from kv('unit-paused')"""
-        HookData()().return_value = True
-        kv().get.return_value = True
-        self.assertEqual(utils.is_paused(), True)
-        kv().get.assert_called_with('unit-paused')
-        kv().get.return_value = False
-        self.assertEqual(utils.is_paused(), False)
+    def test_assess_status(self):
+        with patch.object(utils, 'assess_status_func') as asf:
+            callee = MagicMock()
+            asf.return_value = callee
+            utils.assess_status('test-config')
+            asf.assert_called_once_with('test-config')
+            callee.assert_called_once_with()
 
-    @patch.object(utils, 'is_paused')
-    @patch.object(utils, 'status_set')
-    def test_assess_status(self, status_set, is_paused):
-        """test_assess_status: verify that it does pick the right status"""
-        # check that paused status does the right thing
-        is_paused.return_value = True
-        utils.assess_status(None)
-        status_set.assert_called_with(
-            "maintenance",
-            "Paused. Use 'resume' action to resume normal service.")
+    @patch.object(utils, 'REQUIRED_INTERFACES')
+    @patch.object(utils, 'check_optional_relations')
+    @patch.object(utils, 'services')
+    @patch.object(utils, 'determine_ports')
+    @patch.object(utils, 'make_assess_status_func')
+    def test_assess_status_func(self,
+                                make_assess_status_func,
+                                determine_ports,
+                                services,
+                                check_optional_relations,
+                                REQUIRED_INTERFACES):
+        services.return_value = 's1'
+        determine_ports.return_value = 'p1'
+        utils.assess_status_func('test-config')
+        make_assess_status_func.assert_called_once_with(
+            'test-config', REQUIRED_INTERFACES,
+            charm_func=check_optional_relations, services='s1', ports='p1')
 
-        # if it isn't paused, the assess_status() calls
-        # set_os_workload_status()
-        is_paused.return_value = False
-        with patch.object(utils, 'set_os_workload_status') \
-                as set_os_workload_status:
-            utils.assess_status("TEST CONFIG")
-            set_os_workload_status.assert_called_with(
-                "TEST CONFIG",
-                utils.REQUIRED_INTERFACES,
-                charm_func=utils.check_optional_relations,
-                services=['haproxy', 'keystone', 'apache2'],
-                ports=[5000, 35357])
+    def test_pause_unit_helper(self):
+        with patch.object(utils, '_pause_resume_helper') as prh:
+            utils.pause_unit_helper('random-config')
+            prh.assert_called_once_with(utils.pause_unit, 'random-config')
+        with patch.object(utils, '_pause_resume_helper') as prh:
+            utils.resume_unit_helper('random-config')
+            prh.assert_called_once_with(utils.resume_unit, 'random-config')
+
+    @patch.object(utils, 'services')
+    @patch.object(utils, 'determine_ports')
+    def test_pause_resume_helper(self, determine_ports, services):
+        f = MagicMock()
+        services.return_value = 's1'
+        determine_ports.return_value = 'p1'
+        with patch.object(utils, 'assess_status_func') as asf:
+            asf.return_value = 'assessor'
+            utils._pause_resume_helper(f, 'some-config')
+            asf.assert_called_once_with('some-config')
+            f.assert_called_once_with('assessor', services='s1', ports='p1')

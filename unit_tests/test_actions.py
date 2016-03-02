@@ -3,106 +3,31 @@ from mock import patch
 
 from test_utils import CharmTestCase
 
-with patch('actions.hooks.keystone_utils.is_paused') as is_paused:
-    with patch('actions.hooks.keystone_utils.register_configs') as configs:
-        with patch('actions.hooks.keystone_utils.os_release') as os_release:
-            import actions.actions
+with patch('actions.hooks.keystone_utils.register_configs') as configs:
+    configs.return_value = 'test-config'
+    import actions.actions
 
 
 class PauseTestCase(CharmTestCase):
 
     def setUp(self):
         super(PauseTestCase, self).setUp(
-            actions.actions, ["service_pause", "HookData", "kv",
-                              "assess_status"])
+            actions.actions, ["pause_unit_helper"])
 
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_pauses_services(self, os_release):
-        """Pause action pauses all Keystone services."""
-        pause_calls = []
-
-        def fake_service_pause(svc):
-            pause_calls.append(svc)
-            return True
-
-        self.service_pause.side_effect = fake_service_pause
-
+    def test_pauses_services(self):
         actions.actions.pause([])
-        self.assertItemsEqual(
-            pause_calls, ['haproxy', 'keystone', 'apache2'])
-
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_bails_out_early_on_error(self, os_release):
-        """Pause action fails early if there are errors stopping a service."""
-        pause_calls = []
-
-        def maybe_kill(svc):
-            if svc == "keystone":
-                return False
-            else:
-                pause_calls.append(svc)
-                return True
-
-        self.service_pause.side_effect = maybe_kill
-        self.assertRaisesRegexp(
-            Exception, "keystone didn't stop cleanly.",
-            actions.actions.pause, [])
-        self.assertEqual(pause_calls, ['haproxy'])
-
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_pause_sets_value(self, os_release):
-        """Pause action sets the unit-paused value to True."""
-        self.HookData()().return_value = True
-
-        actions.actions.pause([])
-        self.kv().set.assert_called_with('unit-paused', True)
+        self.pause_unit_helper.assert_called_once_with('test-config')
 
 
 class ResumeTestCase(CharmTestCase):
 
     def setUp(self):
         super(ResumeTestCase, self).setUp(
-            actions.actions, ["service_resume", "HookData", "kv",
-                              "assess_status"])
+            actions.actions, ["resume_unit_helper"])
 
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_resumes_services(self, os_release):
-        """Resume action resumes all Keystone services."""
-        resume_calls = []
-
-        def fake_service_resume(svc):
-            resume_calls.append(svc)
-            return True
-
-        self.service_resume.side_effect = fake_service_resume
+    def test_pauses_services(self):
         actions.actions.resume([])
-        self.assertEqual(resume_calls, ['haproxy', 'keystone', 'apache2'])
-
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_bails_out_early_on_error(self, os_release):
-        """Resume action fails early if there are errors starting a service."""
-        resume_calls = []
-
-        def maybe_kill(svc):
-            if svc == "keystone":
-                return False
-            else:
-                resume_calls.append(svc)
-                return True
-
-        self.service_resume.side_effect = maybe_kill
-        self.assertRaisesRegexp(
-            Exception, "keystone didn't start cleanly.",
-            actions.actions.resume, [])
-        self.assertEqual(resume_calls, ['haproxy'])
-
-    @patch('actions.hooks.keystone_utils.os_release')
-    def test_resume_sets_value(self, os_release):
-        """Resume action sets the unit-paused value to False."""
-        self.HookData()().return_value = True
-
-        actions.actions.resume([])
-        self.kv().set.assert_called_with('unit-paused', False)
+        self.resume_unit_helper.assert_called_once_with('test-config')
 
 
 class MainTestCase(CharmTestCase):

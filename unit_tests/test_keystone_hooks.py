@@ -40,7 +40,6 @@ TO_PATCH = [
     # charmhelpers.core.host
     'apt_install',
     'apt_update',
-    'restart_on_change',
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     # charmhelpers.contrib.openstack.ip

@@ -8,12 +8,9 @@ from charmhelpers.contrib.openstack.utils import (
     do_action_openstack_upgrade,
 )
 
-from keystone_hooks import (
-    CONFIGS,
-)
-
 from keystone_utils import (
     do_openstack_upgrade,
+    register_configs,
 )
 
 
@@ -30,7 +27,7 @@ def openstack_upgrade():
 
     if (do_action_openstack_upgrade('keystone',
                                     do_openstack_upgrade,
-                                    CONFIGS)):
+                                    register_configs())):
         os.execl('./hooks/config-changed-postupgrade', '')
 
 if __name__ == '__main__':

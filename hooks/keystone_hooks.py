@@ -29,7 +29,6 @@ from charmhelpers.core.hookenv import (
 
 from charmhelpers.core.host import (
     mkdir,
-    restart_on_change,
 )
 
 from charmhelpers.core.strutils import (
@@ -48,6 +47,7 @@ from charmhelpers.contrib.openstack.utils import (
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses,
     os_release,
+    pausable_restart_on_change as restart_on_change,
 )
 
 from keystone_utils import (

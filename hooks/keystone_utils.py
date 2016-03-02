@@ -52,6 +52,10 @@ from charmhelpers.contrib.openstack.utils import (
     os_release,
     save_script_rc as _save_script_rc,
     set_os_workload_status,
+    pause_unit,
+    resume_unit,
+    is_unit_paused_set,
+    make_assess_status_func,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -83,7 +87,6 @@ from charmhelpers.core.hookenv import (
     INFO,
     WARNING,
     status_get,
-    status_set,
 )
 
 from charmhelpers.fetch import (
@@ -116,11 +119,6 @@ from charmhelpers.core.templating import render
 
 import keystone_context
 import keystone_ssl as ssl
-
-from charmhelpers.core.unitdata import (
-    HookData,
-    kv,
-)
 
 
 TEMPLATES = 'templates/'
@@ -1974,7 +1972,9 @@ def git_post_install(projects_yaml):
     render('git.upstart', '/etc/init/keystone.conf', keystone_context,
            perms=0o644, templates_dir=templates_dir)
 
-    service_restart('keystone')
+    # Don't restart if the unit is supposed to be paused.
+    if not is_unit_paused_set():
+        service_restart('keystone')
 
 
 def check_optional_relations(configs):
@@ -1992,39 +1992,68 @@ def check_optional_relations(configs):
         return 'unknown', 'No optional relations'
 
 
-def is_paused(status_get=status_get):
-    """Is the unit paused?"""
-    with HookData()():
-        if kv().get('unit-paused'):
-            return True
-        else:
-            return False
-
-
 def assess_status(configs):
     """Assess status of current unit
 
     Decides what the state of the unit should be based on the current
     configuration.
 
-    @param configs: a templating.OSConfigRenderer() object
-    """
-    if is_paused():
-        status_set("maintenance",
-                   "Paused. Use 'resume' action to resume normal service.")
-        return
+    SIDE EFFECT: calls set_os_workload_status(...) which sets the workload
+    status of the unit.
+    Also calls status_set(...) directly if paused state isn't complete.
 
-    # set the status according to the current state of the contexts
-    set_os_workload_status(
+    @param configs: a templating.OSConfigRenderer() object
+    @returns None - this function is executed for its side-effect
+    """
+    assess_status_func(configs)()
+
+
+def assess_status_func(configs):
+    """Helper function to create the function that will assess_status() for
+    the unit.
+    Uses charmhelpers.contrib.openstack.utils.make_assess_status_func() to
+    create the appropriate status function and then returns it.
+    Used directly by assess_status() and also for pausing and resuming
+    the unit.
+
+    @param configs: a templating.OSConfigRenderer() object
+    @return f() -> None : a function that assesses the unit's workload status
+    """
+    return make_assess_status_func(
         configs, REQUIRED_INTERFACES, charm_func=check_optional_relations,
         services=services(), ports=determine_ports())
 
 
-def get_admin_domain_id():
-    domain_id = None
-    if os.path.isfile(STORED_ADMIN_DOMAIN_ID):
-        log("Loading stored domain id from %s" % STORED_ADMIN_DOMAIN_ID,
-            level=INFO)
-        with open(STORED_ADMIN_DOMAIN_ID, 'r') as fd:
-            domain_id = fd.readline().strip('\n')
-    return domain_id
+def pause_unit_helper(configs):
+    """Helper function to pause a unit, and then call assess_status(...) in
+    effect, so that the status is correctly updated.
+    Uses charmhelpers.contrib.openstack.utils.pause_unit() to do the work.
+
+    @param configs: a templating.OSConfigRenderer() object
+    @returns None - this function is executed for its side-effect
+    """
+    _pause_resume_helper(pause_unit, configs)
+
+
+def resume_unit_helper(configs):
+    """Helper function to resume a unit, and then call assess_status(...) in
+    effect, so that the status is correctly updated.
+    Uses charmhelpers.contrib.openstack.utils.resume_unit() to do the work.
+
+    @param configs: a templating.OSConfigRenderer() object
+    @returns None - this function is executed for its side-effect
+    """
+    _pause_resume_helper(resume_unit, configs)
+
+
+def _pause_resume_helper(f, configs):
+    """Helper function that uses the make_assess_status_func(...) from
+    charmhelpers.contrib.openstack.utils to create an assess_status(...)
+    function that can be used with the pause/resume of the unit
+
+    @param f: the function to be used with the assess_status(...) function
+    @returns None - this function is executed for its side-effect
+    """
+    f(assess_status_func(configs),
+      services=services(),
+      ports=determine_ports())
