@@ -66,6 +66,7 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     POLICY_JSON,
+    TOKEN_FLUSH_CRON_FILE,
     SSH_USER,
     setup_ipv6,
     send_notifications,
@@ -492,12 +493,25 @@ def cluster_changed():
         CONFIGS.write_all()
 
 
+@hooks.hook('leader-elected')
+def leader_elected():
+    log('Unit has been elected leader.', level=DEBUG)
+    # When the local unit has been elected the leader, update the cron jobs
+    # to ensure that the cron jobs are active on this unit.
+    CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
+
+
 @hooks.hook('leader-settings-changed')
 def leader_settings_changed():
+    # Since minions are notified of a regime change via the
+    # leader-settings-changed hook, rewrite the token flush cron job to make
+    # sure only the leader is running the cron job.
+    CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
+
     log('Firing identity_changed hook for all related services.')
     for rid in relation_ids('identity-service'):
-            for unit in related_units(rid):
-                identity_changed(relation_id=rid, remote_unit=unit)
+        for unit in related_units(rid):
+            identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('ha-relation-joined')

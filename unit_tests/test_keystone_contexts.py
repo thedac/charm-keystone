@@ -168,3 +168,13 @@ class TestKeystoneContexts(CharmTestCase):
 
         mock_config.return_value = None
         self.assertEqual({'log_level': None}, ctxt())
+
+    @patch.object(context, 'is_elected_leader')
+    def test_token_flush_context(self, mock_is_elected_leader):
+        ctxt = context.TokenFlushContext()
+
+        mock_is_elected_leader.return_value = False
+        self.assertEqual({'token_flush': False}, ctxt())
+
+        mock_is_elected_leader.return_value = True
+        self.assertEqual({'token_flush': True}, ctxt())

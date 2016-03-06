@@ -12,8 +12,10 @@ from charmhelpers.core.host import (
 from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
+    DC_RESOURCE_NAME,
     determine_apache_port,
     determine_api_port,
+    is_elected_leader,
 )
 
 from charmhelpers.core.hookenv import (
@@ -263,4 +265,13 @@ class KeystoneLoggingContext(context.OSContextGenerator):
                 "(WARNING, INFO, DEBUG, ERROR) keeping the current state.")
             ctxt['log_level'] = None
 
+        return ctxt
+
+
+class TokenFlushContext(context.OSContextGenerator):
+
+    def __call__(self):
+        ctxt = {
+            'token_flush': is_elected_leader(DC_RESOURCE_NAME)
+        }
         return ctxt

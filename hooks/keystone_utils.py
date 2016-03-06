@@ -188,6 +188,7 @@ SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 ADMIN_DOMAIN = 'admin_domain'
 DEFAULT_DOMAIN = 'Default'
 POLICY_JSON = '/etc/keystone/policy.json'
+TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -220,6 +221,11 @@ BASE_RESOURCE_MAP = OrderedDict([
     (POLICY_JSON, {
         'contexts': [keystone_context.KeystoneContext()],
         'services': BASE_SERVICES,
+    }),
+    (TOKEN_FLUSH_CRON_FILE, {
+        'contexts': [keystone_context.TokenFlushContext(),
+                     context.SyslogContext()],
+        'services': [],
     }),
 ])
 
