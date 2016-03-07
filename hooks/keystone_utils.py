@@ -166,6 +166,7 @@ KEYSTONE_LOGGER_CONF = "/etc/keystone/logging.conf"
 KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
 STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
 STORED_TOKEN = "/var/lib/keystone/keystone.token"
+STORED_ADMIN_DOMAIN_ID = "/var/lib/keystone/keystone.admin_domain_id"
 SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
 
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
@@ -184,6 +185,10 @@ SSH_USER = 'juju_keystone'
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
+ADMIN_DOMAIN = 'admin_domain'
+DEFAULT_DOMAIN = 'Default'
+POLICY_JSON = '/etc/keystone/policy.json'
+
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
         'services': BASE_SERVICES,
@@ -211,6 +216,10 @@ BASE_RESOURCE_MAP = OrderedDict([
     (APACHE_24_CONF, {
         'contexts': [keystone_context.ApacheSSLContext()],
         'services': ['apache2'],
+    }),
+    (POLICY_JSON, {
+        'contexts': [keystone_context.KeystoneContext()],
+        'services': BASE_SERVICES,
     }),
 ])
 
@@ -329,6 +338,8 @@ def resource_map():
     """
     resource_map = deepcopy(BASE_RESOURCE_MAP)
 
+    if os_release('keystone') < 'liberty':
+        resource_map.pop(POLICY_JSON)
     if os.path.exists('/etc/apache2/conf-available'):
         resource_map.pop(APACHE_CONF)
     else:
@@ -452,18 +463,26 @@ def migrate_database():
 # OLD
 
 
-def get_local_endpoint():
+def get_api_suffix():
+    return 'v2.0' if get_api_version() == 2 else 'v3'
+
+
+def get_local_endpoint(api_suffix=None):
     """Returns the URL for the local end-point bypassing haproxy/ssl"""
+    if not api_suffix:
+        api_suffix = get_api_suffix()
+    keystone_port = determine_api_port(api_port('keystone-admin'),
+                                       singlenode_mode=True)
     if config('prefer-ipv6'):
         ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-        endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
-        local_endpoint = endpoint_url.format(
-            determine_api_port(api_port('keystone-admin'),
-                               singlenode_mode=True))
+        local_endpoint = 'http://[{}]:{}/{}/'.format(
+            ipv6_addr,
+            keystone_port,
+            api_suffix)
     else:
-        local_endpoint = 'http://localhost:{}/v2.0/'.format(
-            determine_api_port(api_port('keystone-admin'),
-                               singlenode_mode=True))
+        local_endpoint = 'http://localhost:{}/{}/'.format(
+            keystone_port,
+            api_suffix)
 
     return local_endpoint
 
@@ -506,18 +525,14 @@ def get_admin_token():
 
 
 def is_service_present(service_name, service_type):
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     service_id = manager.resolve_service_id(service_name, service_type)
     return service_id is not None
 
 
 def delete_service_entry(service_name, service_type):
     """ Delete a service from keystone"""
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     service_id = manager.resolve_service_id(service_name, service_type)
     if service_id:
         manager.api.services.delete(service_id)
@@ -526,28 +541,34 @@ def delete_service_entry(service_name, service_type):
 
 def create_service_entry(service_name, service_type, service_desc, owner=None):
     """ Add a new service entry to keystone if one does not already exist """
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     for service in [s._info for s in manager.api.services.list()]:
         if service['name'] == service_name:
             log("Service entry for '%s' already exists." % service_name,
                 level=DEBUG)
             return
 
-    manager.api.services.create(name=service_name,
-                                service_type=service_type,
+    manager.api.services.create(service_name,
+                                service_type,
                                 description=service_desc)
     log("Created new service entry '%s'" % service_name, level=DEBUG)
 
 
 def create_endpoint_template(region, service, publicurl, adminurl,
                              internalurl):
+    manager = get_manager()
+    if manager.api_version == 2:
+        create_endpoint_template_v2(manager, region, service, publicurl,
+                                    adminurl, internalurl)
+    else:
+        create_endpoint_template_v3(manager, region, service, publicurl,
+                                    adminurl, internalurl)
+
+
+def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
+                                internalurl):
     """ Create a new endpoint template for service if one does not already
         exist matching name *and* region """
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
     service_id = manager.resolve_service_id(service)
     for ep in [e._info for e in manager.api.endpoints.list()]:
         if ep['service_id'] == service_id and ep['region'] == region:
@@ -566,67 +587,131 @@ def create_endpoint_template(region, service, publicurl, adminurl,
                 log("Updating endpoint template with new endpoint urls.")
                 manager.api.endpoints.delete(ep['id'])
 
-    manager.api.endpoints.create(region=region,
-                                 service_id=service_id,
-                                 publicurl=publicurl,
-                                 adminurl=adminurl,
-                                 internalurl=internalurl)
+    manager.create_endpoints(region=region,
+                             service_id=service_id,
+                             publicurl=publicurl,
+                             adminurl=adminurl,
+                             internalurl=internalurl)
     log("Created new endpoint template for '%s' in '%s'" % (region, service),
         level=DEBUG)
 
 
+def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
+                                internalurl):
+    service_id = manager.resolve_service_id(service)
+    endpoints = {
+        'public': publicurl,
+        'admin': adminurl,
+        'internal': internalurl,
+    }
+    for ep_type in endpoints.keys():
+        # Delete endpoint if its has changed
+        ep_deleted = manager.delete_old_endpoint_v3(
+            ep_type,
+            service_id,
+            region,
+            endpoints[ep_type]
+        )
+        ep_exists = manager.find_endpoint_v3(
+            ep_type,
+            service_id,
+            region
+        )
+        if ep_deleted or not ep_exists:
+            manager.api.endpoints.create(
+                service_id,
+                endpoints[ep_type],
+                interface=ep_type,
+                region=region
+            )
+
+
 def create_tenant(name):
     """Creates a tenant if it does not already exist"""
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
-    tenants = [t._info for t in manager.api.tenants.list()]
-    if not tenants or name not in [t['name'] for t in tenants]:
-        manager.api.tenants.create(tenant_name=name,
-                                   description='Created by Juju')
+    manager = get_manager()
+    tenant = manager.resolve_tenant_id(name)
+    if not tenant:
+        manager.create_tenant(tenant_name=name,
+                              description='Created by Juju')
         log("Created new tenant: %s" % name, level=DEBUG)
         return
 
     log("Tenant '%s' already exists." % name, level=DEBUG)
 
 
-def user_exists(name):
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
-    users = [u._info for u in manager.api.users.list()]
-    if not users or name not in [u['name'] for u in users]:
-        return False
+def create_or_show_domain(name):
+    """Creates a domain if it does not already exist"""
+    manager = get_manager()
+    domain_id = manager.resolve_domain_id(name)
+    if domain_id:
+        log("Domain '%s' already exists." % name, level=DEBUG)
+    else:
+        manager.create_domain(domain_name=name,
+                              description='Created by Juju')
+        log("Created new domain: %s" % name, level=DEBUG)
+        domain_id = manager.resolve_domain_id(name)
+    return domain_id
 
-    return True
+
+def user_exists(name, domain=None):
+    manager = get_manager()
+    if domain:
+        domain_id = manager.resolve_domain_id(domain)
+        if not domain_id:
+            error_out('Could not resolve domain_id for {} when checking if '
+                      ' user {} exists'.format(domain, name))
+    for user in manager.api.users.list():
+        if user.name == name:
+            # In v3 Domains are seperate user namespaces so need to check that
+            # the domain matched if provided
+            if domain:
+                if domain_id == user.domain_id:
+                    return True
+            else:
+                return True
+
+    return False
 
 
-def create_user(name, password, tenant):
+def create_user(name, password, tenant=None, domain=None):
     """Creates a user if it doesn't already exist, as a member of tenant"""
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
-    if user_exists(name):
+    manager = get_manager()
+    if user_exists(name, domain=domain):
         log("A user named '%s' already exists" % name, level=DEBUG)
         return
 
-    tenant_id = manager.resolve_tenant_id(tenant)
-    if not tenant_id:
-        error_out('Could not resolve tenant_id for tenant %s' % tenant)
+    tenant_id = None
+    if tenant:
+        tenant_id = manager.resolve_tenant_id(tenant)
+        if not tenant_id:
+            error_out('Could not resolve tenant_id for tenant %s' % tenant)
 
-    manager.api.users.create(name=name,
-                             password=password,
-                             email='juju@localhost',
-                             tenant_id=tenant_id)
+    domain_id = None
+    if domain:
+        domain_id = manager.resolve_domain_id(domain)
+        if not domain_id:
+            error_out('Could not resolve domain_id for domain %s when creating'
+                      ' user %s' % (domain, name))
+
+    manager.create_user(name=name,
+                        password=password,
+                        email='juju@localhost',
+                        tenant_id=tenant_id,
+                        domain_id=domain_id)
     log("Created new user '%s' tenant: %s" % (name, tenant_id),
         level=DEBUG)
 
 
-def create_role(name, user=None, tenant=None):
+def get_manager(api_version=None):
+    """Return a keystonemanager for the correct API version"""
+    from manager import get_keystone_manager
+    return get_keystone_manager(get_local_endpoint(), get_admin_token(),
+                                api_version)
+
+
+def create_role(name, user=None, tenant=None, domain=None):
     """Creates a role if it doesn't already exist. grants role to user"""
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     roles = [r._info for r in manager.api.roles.list()]
     if not roles or name not in [r['name'] for r in roles]:
         manager.api.roles.create(name=name)
@@ -640,31 +725,45 @@ def create_role(name, user=None, tenant=None):
     # NOTE(adam_g): Keystone client requires id's for add_user_role, not names
     user_id = manager.resolve_user_id(user)
     role_id = manager.resolve_role_id(name)
-    tenant_id = manager.resolve_tenant_id(tenant)
 
-    if None in [user_id, role_id, tenant_id]:
-        error_out("Could not resolve [%s, %s, %s]" %
-                  (user_id, role_id, tenant_id))
+    if None in [user_id, role_id]:
+        error_out("Could not resolve [%s, %s]" %
+                  (user_id, role_id))
 
-    grant_role(user, name, tenant)
+    grant_role(user, name, tenant, domain)
 
 
-def grant_role(user, role, tenant):
+def grant_role(user, role, tenant=None, domain=None, user_domain=None):
     """Grant user and tenant a specific role"""
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     log("Granting user '%s' role '%s' on tenant '%s'" %
         (user, role, tenant))
-    user_id = manager.resolve_user_id(user)
-    role_id = manager.resolve_role_id(role)
-    tenant_id = manager.resolve_tenant_id(tenant)
 
-    cur_roles = manager.api.roles.roles_for_user(user_id, tenant_id)
+    user_id = manager.resolve_user_id(user, user_domain=user_domain)
+    role_id = manager.resolve_role_id(role)
+    if None in [user_id, role_id]:
+        error_out("Could not resolve [%s, %s]" %
+                  (user_id, role_id))
+
+    tenant_id = None
+    if tenant:
+        tenant_id = manager.resolve_tenant_id(tenant)
+        if not tenant_id:
+            error_out('Could not resolve tenant_id for tenant %s' % tenant)
+
+    domain_id = None
+    if domain:
+        domain_id = manager.resolve_domain_id(domain)
+        if not domain_id:
+            error_out('Could not resolve domain_id for domain %s' % domain)
+
+    cur_roles = manager.roles_for_user(user_id, tenant_id=tenant_id,
+                                       domain_id=domain_id)
     if not cur_roles or role_id not in [r.id for r in cur_roles]:
-        manager.api.roles.add_user_role(user=user_id,
-                                        role=role_id,
-                                        tenant=tenant_id)
+        manager.add_user_role(user=user_id,
+                              role=role_id,
+                              tenant=tenant_id,
+                              domain=domain_id)
         log("Granted user '%s' role '%s' on tenant '%s'" %
             (user, role, tenant), level=DEBUG)
     else:
@@ -675,6 +774,11 @@ def grant_role(user, role, tenant):
 def store_admin_passwd(passwd):
     with open(STORED_PASSWD, 'w+') as fd:
         fd.writelines("%s\n" % passwd)
+
+
+def store_admin_domain_id(domain_id):
+    with open(STORED_ADMIN_DOMAIN_ID, 'w+') as fd:
+        fd.writelines("%s\n" % domain_id)
 
 
 def get_admin_passwd():
@@ -708,6 +812,13 @@ def get_admin_passwd():
     return passwd
 
 
+def get_api_version():
+    api_version = config('preferred-api-version')
+    if api_version not in [2, 3]:
+        raise ValueError('Bad preferred-api-version')
+    return api_version
+
+
 def ensure_initial_admin(config):
     # Allow retry on fail since leader may not be ready yet.
     # NOTE(hopem): ks client may not be installed at module import time so we
@@ -734,13 +845,27 @@ def ensure_initial_admin(config):
         """
         create_tenant("admin")
         create_tenant(config("service-tenant"))
+        if get_api_version() > 2:
+            domain_id = create_or_show_domain(ADMIN_DOMAIN)
+            store_admin_domain_id(domain_id)
         # User is managed by ldap backend when using ldap identity
         if not (config('identity-backend') ==
                 'ldap' and config('ldap-readonly')):
             passwd = get_admin_passwd()
             if passwd:
-                create_user_credentials(config('admin-user'), 'admin', passwd,
-                                        new_roles=[config('admin-role')])
+                if get_api_version() > 2:
+                    create_user_credentials(config('admin-user'), passwd,
+                                            domain=ADMIN_DOMAIN)
+                    create_role(config('admin-role'), config('admin-user'),
+                                domain=ADMIN_DOMAIN)
+                    grant_role(config('admin-user'), config('admin-role'),
+                               tenant='admin', user_domain=ADMIN_DOMAIN)
+                    grant_role(config('admin-user'), config('admin-role'),
+                               domain=ADMIN_DOMAIN, user_domain=ADMIN_DOMAIN)
+                else:
+                    create_user_credentials(config('admin-user'), passwd,
+                                            tenant='admin',
+                                            new_roles=[config('admin-role')])
 
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
@@ -756,34 +881,39 @@ def ensure_initial_admin(config):
     return _ensure_initial_admin(config)
 
 
-def endpoint_url(ip, port):
+def endpoint_url(ip, port, suffix=None):
     proto = 'http'
     if https():
         proto = 'https'
     if is_ipv6(ip):
         ip = "[{}]".format(ip)
-    return "%s://%s:%s/v2.0" % (proto, ip, port)
+    if suffix:
+        ep = "%s://%s:%s/%s" % (proto, ip, port, suffix)
+    else:
+        ep = "%s://%s:%s" % (proto, ip, port)
+    return ep
 
 
 def create_keystone_endpoint(public_ip, service_port,
                              internal_ip, admin_ip, auth_port, region):
-    create_endpoint_template(region, "keystone",
-                             endpoint_url(public_ip, service_port),
-                             endpoint_url(admin_ip, auth_port),
-                             endpoint_url(internal_ip, service_port))
+    api_suffix = get_api_suffix()
+    create_endpoint_template(
+        region, "keystone",
+        endpoint_url(public_ip, service_port, suffix=api_suffix),
+        endpoint_url(admin_ip, auth_port, suffix=api_suffix),
+        endpoint_url(internal_ip, service_port, suffix=api_suffix),
+    )
 
 
 def update_user_password(username, password):
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     log("Updating password for user '%s'" % username)
 
     user_id = manager.resolve_user_id(username)
     if user_id is None:
         error_out("Could not resolve user id for '%s'" % username)
 
-    manager.api.users.update_password(user=user_id, password=password)
+    manager.update_password(user=user_id, password=password)
     log("Successfully updated password for user '%s'" %
         username)
 
@@ -1361,22 +1491,23 @@ def relation_list(rid):
         return result
 
 
-def create_user_credentials(user, tenant, passwd, new_roles=None, grants=None):
+def create_user_credentials(user, passwd, tenant=None, new_roles=None,
+                            grants=None, domain=None):
     """Create user credentials.
 
     Optionally adds role grants to user and/or creates new roles.
     """
     log("Creating service credentials for '%s'" % user, level=DEBUG)
-    if user_exists(user):
+    if user_exists(user, domain=domain):
         log("User '%s' already exists - updating password" % (user),
             level=DEBUG)
         update_user_password(user, passwd)
     else:
-        create_user(user, passwd, tenant)
+        create_user(user, passwd, tenant, domain)
 
     if grants:
         for role in grants:
-            grant_role(user, role, tenant)
+            grant_role(user, role, tenant, domain)
     else:
         log("No role grants requested for user '%s'" % (user), level=DEBUG)
 
@@ -1385,7 +1516,7 @@ def create_user_credentials(user, tenant, passwd, new_roles=None, grants=None):
         # Currently used by Swift and Ceilometer.
         for role in new_roles:
             log("Creating requested role '%s'" % role, level=DEBUG)
-            create_role(role, user, tenant)
+            create_role(role, user, tenant, domain)
 
     return passwd
 
@@ -1400,15 +1531,18 @@ def create_service_credentials(user, new_roles=None):
     if not tenant:
         raise Exception("No service tenant provided in config")
 
-    return create_user_credentials(user, tenant, get_service_password(user),
-                                   new_roles=new_roles,
-                                   grants=[config('admin-role')])
+    if get_api_version() == 2:
+        domain = None
+    else:
+        domain = DEFAULT_DOMAIN
+    return create_user_credentials(user, get_service_password(user),
+                                   tenant=tenant, new_roles=new_roles,
+                                   grants=[config('admin-role')],
+                                   domain=domain)
 
 
 def add_service_to_keystone(relation_id=None, remote_unit=None):
-    import manager
-    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
-                                      token=get_admin_token())
+    manager = get_manager()
     settings = relation_get(rid=relation_id, unit=remote_unit)
     # the minimum settings needed per endpoint
     single = set(['service', 'region', 'public_url', 'admin_url',
@@ -1419,7 +1553,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         protocol = 'https'
     else:
         protocol = 'http'
-
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
         if 'None' in settings.itervalues():
@@ -1546,6 +1679,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # we return a token, information about our API endpoints, and the generated
     # service credentials
     service_tenant = config('service-tenant')
+    domain_name = 'Default' if manager.api_version == 3 else None
+    grant_role(service_username, 'Admin', service_tenant, domain_name)
 
     # NOTE(dosaboy): we use __null__ to represent settings that are to be
     # routed to relations via the cluster relation and set to None.
@@ -1565,6 +1700,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "ca_cert": '__null__',
         "auth_protocol": protocol,
         "service_protocol": protocol,
+        "api_version": get_api_version(),
     }
 
     # generate or get a new cert/key for service if set to manage certs.
@@ -1863,7 +1999,6 @@ def assess_status(configs):
 
     @param configs: a templating.OSConfigRenderer() object
     """
-
     if is_paused():
         status_set("maintenance",
                    "Paused. Use 'resume' action to resume normal service.")
@@ -1873,3 +2008,13 @@ def assess_status(configs):
     set_os_workload_status(
         configs, REQUIRED_INTERFACES, charm_func=check_optional_relations,
         services=services(), ports=determine_ports())
+
+
+def get_admin_domain_id():
+    domain_id = None
+    if os.path.isfile(STORED_ADMIN_DOMAIN_ID):
+        log("Loading stored domain id from %s" % STORED_ADMIN_DOMAIN_ID,
+            level=INFO)
+        with open(STORED_ADMIN_DOMAIN_ID, 'r') as fd:
+            domain_id = fd.readline().strip('\n')
+    return domain_id

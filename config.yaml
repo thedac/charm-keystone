@@ -298,6 +298,12 @@ options:
     description: |
       A comma-separated list of nagios servicegroups.
       If left empty, the nagios_context will be used as the servicegroup
+  preferred-api-version:
+    default: 2
+    type: int
+    description: |
+      Use this keystone api version for keystone endpoints and advertise this
+      version to identity client charms
   action-managed-upgrade:
     type: boolean
     default: False

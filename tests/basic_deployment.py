@@ -17,6 +17,8 @@ from charmhelpers.contrib.openstack.amulet.utils import (
     DEBUG,
     # ERROR
 )
+import keystoneclient
+from charmhelpers.core.decorators import retry_on_exception
 
 # Use DEBUG to turn on debug logging
 u = OpenStackAmuletUtils(DEBUG)
@@ -30,6 +32,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
+        self.keystone_api_version = 2
         self.git = git
         self._add_services()
         self._add_relations()
@@ -37,8 +40,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
 
         u.log.info('Waiting on extended status checks...')
-        exclude_services = ['mysql']
-        self._auto_wait_for_status(exclude_services=exclude_services)
+        self.exclude_services = ['mysql']
+        self._auto_wait_for_status(exclude_services=self.exclude_services)
 
         self._initialize_tests()
 
@@ -72,7 +75,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _configure_services(self):
         """Configure all of the services."""
         keystone_config = {'admin-password': 'openstack',
-                           'admin-token': 'ubuntutesting'}
+                           'admin-token': 'ubuntutesting',
+                           'preferred-api-version': self.keystone_api_version}
         if self.git:
             amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
 
@@ -109,6 +113,103 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
+    @retry_on_exception(5, base_delay=10)
+    def set_api_version(self, api_version):
+        set_alternate = {'preferred-api-version': api_version}
+
+        # Make config change, check for service restarts
+        u.log.debug('Setting preferred-api-version={}'.format(api_version))
+        self.d.configure('keystone', set_alternate)
+        self.keystone_api_version = api_version
+        client = self.get_keystone_client(api_version=api_version)
+        # List an artefact that needs authorisation to check admin user
+        # has been setup. If that is still in progess
+        # keystoneclient.exceptions.Unauthorized will be thrown and caught by
+        # @retry_on_exception
+        if api_version == 2:
+            client.tenants.list()
+            self.keystone_v2 = self.get_keystone_client(api_version=2)
+        else:
+            client.projects.list()
+            self.keystone_v3 = self.get_keystone_client(api_version=3)
+
+    def get_keystone_client(self, api_version=None):
+        if api_version == 2:
+            return u.authenticate_keystone_admin(self.keystone_sentry,
+                                                 user='admin',
+                                                 password='openstack',
+                                                 tenant='admin',
+                                                 api_version=api_version,
+                                                 keystone_ip=self.keystone_ip)
+        else:
+            return u.authenticate_keystone_admin(self.keystone_sentry,
+                                                 user='admin',
+                                                 password='openstack',
+                                                 api_version=api_version,
+                                                 keystone_ip=self.keystone_ip)
+
+    def create_users_v2(self):
+        # Create a demo tenant/role/user
+        self.demo_tenant = 'demoTenant'
+        self.demo_role = 'demoRole'
+        self.demo_user = 'demoUser'
+        if not u.tenant_exists(self.keystone_v2, self.demo_tenant):
+            tenant = self.keystone_v2.tenants.create(
+                tenant_name=self.demo_tenant,
+                description='demo tenant',
+                enabled=True)
+            self.keystone_v2.roles.create(name=self.demo_role)
+            self.keystone_v2.users.create(name=self.demo_user,
+                                          password='password',
+                                          tenant_id=tenant.id,
+                                          email='demo@demo.com')
+
+            # Authenticate keystone demo
+            self.keystone_demo = u.authenticate_keystone_user(
+                self.keystone_v2, user=self.demo_user,
+                password='password', tenant=self.demo_tenant)
+
+    def create_users_v3(self):
+        # Create a demo tenant/role/user
+        self.demo_project = 'demoProject'
+        self.demo_user_v3 = 'demoUserV3'
+        self.demo_domain = 'demoDomain'
+        try:
+            domain = self.keystone_v3.domains.find(name=self.demo_domain)
+        except keystoneclient.exceptions.NotFound:
+            domain = self.keystone_v3.domains.create(
+                self.demo_domain,
+                description='Demo Domain',
+                enabled=True
+            )
+
+        try:
+            self.keystone_v3.projects.find(name=self.demo_project)
+        except keystoneclient.exceptions.NotFound:
+            self.keystone_v3.projects.create(
+                self.demo_project,
+                domain,
+                description='Demo Project',
+                enabled=True,
+            )
+
+        try:
+            self.keystone_v3.roles.find(name=self.demo_role)
+        except keystoneclient.exceptions.NotFound:
+            self.keystone_v3.roles.create(name=self.demo_role)
+
+        try:
+            self.keystone_v3.users.find(name=self.demo_user_v3)
+        except keystoneclient.exceptions.NotFound:
+            self.keystone_v3.users.create(
+                self.demo_user_v3,
+                domain=domain.id,
+                project=self.demo_project,
+                password='password',
+                email='demov3@demo.com',
+                description='Demo',
+                enabled=True)
+
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
@@ -119,31 +220,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             self._get_openstack_release()))
         u.log.debug('openstack release str: {}'.format(
             self._get_openstack_release_string()))
-
+        self.keystone_ip = self.keystone_sentry.relation(
+            'shared-db',
+            'mysql:shared-db')['private-address']
+        self.set_api_version(2)
         # Authenticate keystone admin
-        self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
-                                                      user='admin',
-                                                      password='openstack',
-                                                      tenant='admin')
-
-        # Create a demo tenant/role/user
-        self.demo_tenant = 'demoTenant'
-        self.demo_role = 'demoRole'
-        self.demo_user = 'demoUser'
-        if not u.tenant_exists(self.keystone, self.demo_tenant):
-            tenant = self.keystone.tenants.create(tenant_name=self.demo_tenant,
-                                                  description='demo tenant',
-                                                  enabled=True)
-            self.keystone.roles.create(name=self.demo_role)
-            self.keystone.users.create(name=self.demo_user,
-                                       password='password',
-                                       tenant_id=tenant.id,
-                                       email='demo@demo.com')
-
-        # Authenticate keystone demo
-        self.keystone_demo = u.authenticate_keystone_user(
-            self.keystone, user=self.demo_user,
-            password='password', tenant=self.demo_tenant)
+        self.keystone_v2 = self.get_keystone_client(api_version=2)
+        self.keystone_v3 = self.get_keystone_client(api_version=3)
+        self.create_users_v2()
 
     def test_100_services(self):
         """Verify the expected services are running on the corresponding
@@ -159,7 +243,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_102_keystone_tenants(self):
+    def validate_keystone_tenants(self, client):
         """Verify all existing tenants."""
         u.log.debug('Checking keystone tenants...')
         expected = [
@@ -176,13 +260,20 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
              'description': 'Created by Juju',
              'id': u.not_null}
         ]
-        actual = self.keystone.tenants.list()
+        if self.keystone_api_version == 2:
+            actual = client.tenants.list()
+        else:
+            actual = client.projects.list()
 
         ret = u.validate_tenant_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_104_keystone_roles(self):
+    def test_102_keystone_tenants(self):
+        self.set_api_version(2)
+        self.validate_keystone_tenants(self.keystone_v2)
+
+    def validate_keystone_roles(self, client):
         """Verify all existing roles."""
         u.log.debug('Checking keystone roles...')
         expected = [
@@ -191,40 +282,113 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             {'name': 'Admin',
              'id': u.not_null}
         ]
-        actual = self.keystone.roles.list()
+        actual = client.roles.list()
 
         ret = u.validate_role_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_106_keystone_users(self):
+    def test_104_keystone_roles(self):
+        self.set_api_version(2)
+        self.validate_keystone_roles(self.keystone_v2)
+
+    def validate_keystone_users(self, client):
         """Verify all existing roles."""
         u.log.debug('Checking keystone users...')
-        expected = [
+        base = [
             {'name': 'demoUser',
              'enabled': True,
-             'tenantId': u.not_null,
              'id': u.not_null,
              'email': 'demo@demo.com'},
             {'name': 'admin',
              'enabled': True,
-             'tenantId': u.not_null,
              'id': u.not_null,
              'email': 'juju@localhost'},
             {'name': 'cinder_cinderv2',
              'enabled': True,
-             'tenantId': u.not_null,
              'id': u.not_null,
              'email': u'juju@localhost'}
         ]
-        actual = self.keystone.users.list()
-        ret = u.validate_user_data(expected, actual)
+        expected = []
+        for user_info in base:
+            if self.keystone_api_version == 2:
+                user_info['tenantId'] = u.not_null
+            else:
+                user_info['default_project_id'] = u.not_null
+            expected.append(user_info)
+        actual = client.users.list()
+        ret = u.validate_user_data(expected, actual,
+                                   api_version=self.keystone_api_version)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_108_service_catalog(self):
+    def test_106_keystone_users(self):
+        self.set_api_version(2)
+        self.validate_keystone_users(self.keystone_v2)
+
+    def is_liberty_or_newer(self):
+        os_release = self._get_openstack_release_string()
+        if os_release >= 'liberty':
+            return True
+        else:
+            u.log.info('Skipping test, {} < liberty'.format(os_release))
+            return False
+
+    def test_112_keystone_tenants(self):
+        if self.is_liberty_or_newer():
+            self.set_api_version(3)
+            self.validate_keystone_tenants(self.keystone_v3)
+
+    def test_114_keystone_tenants(self):
+        if self.is_liberty_or_newer():
+            self.set_api_version(3)
+            self.validate_keystone_roles(self.keystone_v3)
+
+    def test_116_keystone_users(self):
+        if self.is_liberty_or_newer():
+            self.set_api_version(3)
+            self.validate_keystone_users(self.keystone_v3)
+
+    def test_118_keystone_users(self):
+        if self.is_liberty_or_newer():
+            self.set_api_version(3)
+            self.create_users_v3()
+            actual_user = self.keystone_v3.users.find(name=self.demo_user_v3)
+            expect = {
+                'default_project_id': self.demo_project,
+                'email': 'demov3@demo.com',
+                'name': self.demo_user_v3,
+            }
+            for key in expect.keys():
+                u.log.debug('Checking user {} {} is {}'.format(
+                    self.demo_user_v3,
+                    key,
+                    expect[key])
+                )
+                assert expect[key] == getattr(actual_user, key)
+
+    def test_120_keystone_domains(self):
+        if self.is_liberty_or_newer():
+            self.set_api_version(3)
+            self.create_users_v3()
+            actual_domain = self.keystone_v3.domains.find(
+                name=self.demo_domain
+            )
+            expect = {
+                'name': self.demo_domain,
+            }
+            for key in expect.keys():
+                u.log.debug('Checking domain {} {} is {}'.format(
+                    self.demo_domain,
+                    key,
+                    expect[key])
+                )
+                assert expect[key] == getattr(actual_domain, key)
+
+    def test_138_service_catalog(self):
         """Verify that the service catalog endpoint data is valid."""
         u.log.debug('Checking keystone service catalog...')
+        self.set_api_version(2)
         endpoint_check = {
             'adminURL': u.valid_url,
             'id': u.not_null,
@@ -236,16 +400,16 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'volume': [endpoint_check],
             'identity': [endpoint_check]
         }
-        actual = self.keystone.service_catalog.get_endpoints()
+        actual = self.keystone_v2.service_catalog.get_endpoints()
 
         ret = u.validate_svc_catalog_endpoint_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_110_keystone_endpoint(self):
+    def test_140_keystone_endpoint(self):
         """Verify the keystone endpoint data."""
         u.log.debug('Checking keystone api endpoint data...')
-        endpoints = self.keystone.endpoints.list()
+        endpoints = self.keystone_v2.endpoints.list()
         admin_port = '35357'
         internal_port = public_port = '5000'
         expected = {
@@ -262,10 +426,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             amulet.raise_status(amulet.FAIL,
                                 msg='keystone endpoint: {}'.format(ret))
 
-    def test_112_cinder_endpoint(self):
+    def test_142_cinder_endpoint(self):
         """Verify the cinder endpoint data."""
         u.log.debug('Checking cinder endpoint...')
-        endpoints = self.keystone.endpoints.list()
+        endpoints = self.keystone_v2.endpoints.list()
         admin_port = internal_port = public_port = '8776'
         expected = {
             'id': u.not_null,

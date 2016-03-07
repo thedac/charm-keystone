@@ -190,9 +190,15 @@ class KeystoneContext(context.OSContextGenerator):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
             PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths,
+            get_admin_domain_id
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
+        ctxt['api_version'] = int(config('preferred-api-version'))
+        ctxt['admin_role'] = config('admin-role')
+        if ctxt['api_version'] > 2:
+            ctxt['admin_domain_id'] = (
+                get_admin_domain_id() or 'admin_domain_id')
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'),
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
@@ -233,10 +239,10 @@ class KeystoneContext(context.OSContextGenerator):
         # correct auth URL.
         ctxt['public_endpoint'] = endpoint_url(
             resolve_address(PUBLIC),
-            api_port('keystone-public')).rstrip('v2.0')
+            api_port('keystone-public')).replace('v2.0', '')
         ctxt['admin_endpoint'] = endpoint_url(
             resolve_address(ADMIN),
-            api_port('keystone-admin')).rstrip('v2.0')
+            api_port('keystone-admin')).replace('v2.0', '')
 
         return ctxt
 

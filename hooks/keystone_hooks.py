@@ -47,6 +47,7 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses,
+    os_release,
 )
 
 from keystone_utils import (
@@ -64,6 +65,7 @@ from keystone_utils import (
     services,
     CLUSTER_RES,
     KEYSTONE_CONF,
+    POLICY_JSON,
     SSH_USER,
     setup_ipv6,
     send_notifications,
@@ -309,6 +311,8 @@ def db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)
+        if os_release('keystone-common') >= 'liberty':
+            CONFIGS.write(POLICY_JSON)
 
 
 @hooks.hook('pgsql-db-relation-changed')
@@ -320,6 +324,8 @@ def pgsql_db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)
+        if os_release('keystone-common') >= 'liberty':
+            CONFIGS.write(POLICY_JSON)
 
 
 @hooks.hook('identity-service-relation-changed')

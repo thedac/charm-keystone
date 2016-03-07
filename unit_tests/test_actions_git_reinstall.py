@@ -1,7 +1,8 @@
 from mock import patch
 
 with patch('hooks.keystone_utils.register_configs') as register_configs:
-    import git_reinstall
+    with patch('hooks.keystone_utils.os_release') as os_release:
+        import git_reinstall
 
 from test_utils import (
     CharmTestCase
