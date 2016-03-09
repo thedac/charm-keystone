@@ -5,7 +5,8 @@ from test_utils import CharmTestCase
 
 with patch('actions.hooks.keystone_utils.is_paused') as is_paused:
     with patch('actions.hooks.keystone_utils.register_configs') as configs:
-        import actions.actions
+        with patch('actions.hooks.keystone_utils.os_release') as os_release:
+            import actions.actions
 
 
 class PauseTestCase(CharmTestCase):
@@ -15,7 +16,8 @@ class PauseTestCase(CharmTestCase):
             actions.actions, ["service_pause", "HookData", "kv",
                               "assess_status"])
 
-    def test_pauses_services(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_pauses_services(self, os_release):
         """Pause action pauses all Keystone services."""
         pause_calls = []
 
@@ -29,7 +31,8 @@ class PauseTestCase(CharmTestCase):
         self.assertItemsEqual(
             pause_calls, ['haproxy', 'keystone', 'apache2'])
 
-    def test_bails_out_early_on_error(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_bails_out_early_on_error(self, os_release):
         """Pause action fails early if there are errors stopping a service."""
         pause_calls = []
 
@@ -46,7 +49,8 @@ class PauseTestCase(CharmTestCase):
             actions.actions.pause, [])
         self.assertEqual(pause_calls, ['haproxy'])
 
-    def test_pause_sets_value(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_pause_sets_value(self, os_release):
         """Pause action sets the unit-paused value to True."""
         self.HookData()().return_value = True
 
@@ -61,7 +65,8 @@ class ResumeTestCase(CharmTestCase):
             actions.actions, ["service_resume", "HookData", "kv",
                               "assess_status"])
 
-    def test_resumes_services(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_resumes_services(self, os_release):
         """Resume action resumes all Keystone services."""
         resume_calls = []
 
@@ -73,7 +78,8 @@ class ResumeTestCase(CharmTestCase):
         actions.actions.resume([])
         self.assertEqual(resume_calls, ['haproxy', 'keystone', 'apache2'])
 
-    def test_bails_out_early_on_error(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_bails_out_early_on_error(self, os_release):
         """Resume action fails early if there are errors starting a service."""
         resume_calls = []
 
@@ -90,7 +96,8 @@ class ResumeTestCase(CharmTestCase):
             actions.actions.resume, [])
         self.assertEqual(resume_calls, ['haproxy'])
 
-    def test_resume_sets_value(self):
+    @patch('actions.hooks.keystone_utils.os_release')
+    def test_resume_sets_value(self, os_release):
         """Resume action sets the unit-paused value to False."""
         self.HookData()().return_value = True
 

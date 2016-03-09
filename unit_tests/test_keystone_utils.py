@@ -1,7 +1,6 @@
 from mock import patch, call, MagicMock, Mock
 from test_utils import CharmTestCase
 import os
-import manager
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -172,10 +171,11 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_with('keystone')
 
+    @patch.object(utils, 'get_manager')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'b64encode')
     def test_add_service_to_keystone_clustered_https_none_values(
-            self, b64encode, _resolve_address):
+            self, b64encode, _resolve_address, _get_manager):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         _resolve_address.return_value = '10.10.10.10'
@@ -214,7 +214,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
-    @patch.object(manager, 'KeystoneManager')
+    @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             _resolve_address):
@@ -253,9 +253,12 @@ class TestKeystoneUtils(CharmTestCase):
                                         internalurl='192.168.1.2')
         self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
-        self.create_user.assert_called_with('keystone', 'password', 'tenant')
-        self.grant_role.assert_called_with('keystone', 'admin', 'tenant')
-        self.create_role.assert_called_with('role1', 'keystone', 'tenant')
+        self.create_user.assert_called_with('keystone', 'password', 'tenant',
+                                            None)
+        self.grant_role.assert_called_with('keystone', 'Admin', 'tenant',
+                                           None)
+        self.create_role.assert_called_with('role1', 'keystone', 'tenant',
+                                            None)
 
         relation_data = {'auth_host': '10.0.0.3', 'service_host': '10.0.0.3',
                          'admin_token': 'token', 'service_port': 81,
@@ -266,7 +269,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'ssl_cert': '__null__', 'ssl_key': '__null__',
                          'ca_cert': '__null__',
                          'auth_protocol': 'http', 'service_protocol': 'http',
-                         'service_tenant_id': 'tenant_id'}
+                         'service_tenant_id': 'tenant_id', 'api_version': 2}
 
         filtered = {}
         for k, v in relation_data.iteritems():
@@ -284,7 +287,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.ip.config')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
-    @patch.object(manager, 'KeystoneManager')
+    @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_nosubset(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             ip_config):
@@ -317,8 +320,9 @@ class TestKeystoneUtils(CharmTestCase):
                                               mock_grant_role,
                                               mock_user_exists):
         mock_user_exists.return_value = False
-        utils.create_user_credentials('userA', 'tenantA', 'passA')
-        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
+        utils.create_user_credentials('userA', 'passA', tenant='tenantA')
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA',
+                                                None)])
         mock_create_role.assert_has_calls([])
         mock_grant_role.assert_has_calls([])
 
@@ -329,11 +333,14 @@ class TestKeystoneUtils(CharmTestCase):
     def test_create_user_credentials(self, mock_create_user, mock_create_role,
                                      mock_grant_role, mock_user_exists):
         mock_user_exists.return_value = False
-        utils.create_user_credentials('userA', 'tenantA', 'passA',
+        utils.create_user_credentials('userA', 'passA', tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'])
-        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
-        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
-        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA',
+                                                None)])
+        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA',
+                                                None)])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA',
+                                          None)])
 
     @patch.object(utils, 'update_user_password')
     @patch.object(utils, 'user_exists')
@@ -346,11 +353,13 @@ class TestKeystoneUtils(CharmTestCase):
                                                  mock_user_exists,
                                                  mock_update_user_password):
         mock_user_exists.return_value = True
-        utils.create_user_credentials('userA', 'tenantA', 'passA',
+        utils.create_user_credentials('userA', 'passA', tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'])
         mock_create_user.assert_has_calls([])
-        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
-        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
+        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA',
+                                                None)])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA',
+                                               None)])
         mock_update_user_password.assert_has_calls([call('userA', 'passA')])
 
     @patch.object(utils, 'get_service_password')
@@ -358,10 +367,12 @@ class TestKeystoneUtils(CharmTestCase):
     def test_create_service_credentials(self, mock_create_user_credentials,
                                         mock_get_service_password):
         mock_get_service_password.return_value = 'passA'
-        cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin'}
+        cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin',
+               'preferred-api-version': 2}
         self.config.side_effect = lambda key: cfg.get(key, None)
-        calls = [call('serviceA', 'tenantA', 'passA', grants=['Admin'],
-                      new_roles=None)]
+        calls = [call('serviceA', 'passA', domain=None, grants=['Admin'],
+                      new_roles=None, tenant='tenantA')]
+
         utils.create_service_credentials('serviceA')
         mock_create_user_credentials.assert_has_calls(calls)
 
@@ -594,7 +605,7 @@ class TestKeystoneUtils(CharmTestCase):
             internal_ip='10.0.0.1',
             admin_ip='10.0.0.1',
             auth_port=35357,
-            region='RegionOne'
+            region='RegionOne',
         )
 
     @patch.object(utils, 'peer_units')
@@ -704,21 +715,21 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEquals(render.call_args_list, expected)
         service_restart.assert_called_with('keystone')
 
-    @patch.object(manager, 'KeystoneManager')
+    @patch.object(utils, 'get_manager')
     def test_is_service_present(self, KeystoneManager):
         mock_keystone = MagicMock()
         mock_keystone.resolve_service_id.return_value = 'sid1'
         KeystoneManager.return_value = mock_keystone
         self.assertTrue(utils.is_service_present('bob', 'bill'))
 
-    @patch.object(manager, 'KeystoneManager')
+    @patch.object(utils, 'get_manager')
     def test_is_service_present_false(self, KeystoneManager):
         mock_keystone = MagicMock()
         mock_keystone.resolve_service_id.return_value = None
         KeystoneManager.return_value = mock_keystone
         self.assertFalse(utils.is_service_present('bob', 'bill'))
 
-    @patch.object(manager, 'KeystoneManager')
+    @patch.object(utils, 'get_manager')
     def test_delete_service_entry(self, KeystoneManager):
         mock_keystone = MagicMock()
         mock_keystone.resolve_service_id.return_value = 'sid1'

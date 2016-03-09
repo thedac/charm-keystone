@@ -73,6 +73,7 @@ TO_PATCH = [
     'git_install',
     'is_service_present',
     'delete_service_entry',
+    'os_release',
 ]
 
 
@@ -83,9 +84,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.config.side_effect = self.test_config.get
         self.ssh_user = 'juju_keystone'
 
+    @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
-    def test_install_hook(self, ensure_user, git_requested):
+    def test_install_hook(self, ensure_user, git_requested, os_release):
         git_requested.return_value = False
         repo = 'cloud:precise-grizzly'
         self.test_config.set('openstack-origin', repo)
@@ -100,9 +102,10 @@ class KeystoneRelationTests(CharmTestCase):
              'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
 
+    @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
-    def test_install_hook_git(self, ensure_user, git_requested):
+    def test_install_hook_git(self, ensure_user, git_requested, os_release):
         git_requested.return_value = True
         repo = 'cloud:trusty-juno'
         openstack_origin_git = {
@@ -135,6 +138,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
+    @patch.object(utils, 'os_release')
     @patch.object(hooks, 'config')
     @patch('%s.config' % (mod_ch_openstack_utils))
     @patch('%s.relation_set' % (mod_ch_openstack_utils))
@@ -143,7 +147,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('%s.sync_db_with_multi_ipv6_addresses' % (mod_ch_openstack_utils))
     def test_db_joined(self, mock_sync_db_with_multi, mock_get_ipv6_addr,
                        mock_relation_ids, mock_relation_set, mock_config,
-                       mock_hooks_config):
+                       mock_hooks_config, os_release):
 
         cfg_dict = {'prefer-ipv6': False,
                     'database': 'keystone',
@@ -317,6 +321,7 @@ class KeystoneRelationTests(CharmTestCase):
                                    mock_ensure_ssl_cert_master, mock_log,
                                    mock_peer_store, mock_peer_retrieve,
                                    mock_relation_ids):
+        self.os_release.return_value = 'kilo'
         mock_relation_ids.return_value = ['peer/0']
 
         peer_settings = {}
@@ -907,6 +912,7 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'is_db_initialised')
@@ -926,7 +932,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_log,
                                   mock_is_db_initialised,
                                   mock_is_db_ready,
-                                  git_requested):
+                                  git_requested,
+                                  os_release):
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_is_elected_leader.return_value = False
@@ -949,6 +956,7 @@ class KeystoneRelationTests(CharmTestCase):
             'Firing identity_changed hook for all related services.')
         self.assertTrue(self.ensure_initial_admin.called)
 
+    @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
@@ -959,7 +967,8 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_update_hash_from_path,
                                       mock_ensure_ssl_cert_master,
                                       mock_relation_ids,
-                                      mock_log, git_requested):
+                                      mock_log, git_requested,
+                                      os_release):
         mock_relation_ids.return_value = []
         mock_ensure_ssl_cert_master.return_value = False
         # Ensure always returns diff
