@@ -587,7 +587,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'logger_root': {
                 'level': 'WARNING',
-                'handlers': 'file',
+                'handlers': 'file,production',
             },
             'handlers': {
                 'keys': 'production,file,devel'
