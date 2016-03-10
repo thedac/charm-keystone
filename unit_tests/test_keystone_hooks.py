@@ -740,6 +740,22 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(mock_synchronize_ca.called)
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks.CONFIGS, 'write')
+    def test_leader_elected(self, mock_write):
+        hooks.leader_elected()
+        mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
+
+    @patch.object(hooks.CONFIGS, 'write')
+    @patch.object(hooks, 'identity_changed')
+    def test_leader_settings_changed(self, mock_identity_changed,
+                                     mock_write):
+        self.relation_ids.return_value = ['identity:1']
+        self.related_units.return_value = ['keystone/1']
+        hooks.leader_settings_changed()
+        mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
+        exp = [call(relation_id='identity:1', remote_unit='keystone/1')]
+        mock_identity_changed.assert_has_calls(exp)
+
     def test_ha_joined(self):
         self.get_hacluster_config.return_value = {
             'vip': '10.10.10.10',
