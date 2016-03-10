@@ -304,6 +304,10 @@ valid_services = {
         "type": "astara",
         "desc": "Astara Network Orchestration Service",
     },
+    "aodh": {
+        "type": "alarming",
+        "desc": "Aodh Alarming Service",
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
