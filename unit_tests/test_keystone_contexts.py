@@ -167,7 +167,4 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.KeystoneLoggingContext()
 
         mock_config.return_value = None
-        self.assertEqual({}, ctxt())
-
-        mock_config.return_value = 'True'
-        self.assertEqual({'root_level': 'DEBUG'}, ctxt())
+        self.assertEqual({'log_level': None}, ctxt())
