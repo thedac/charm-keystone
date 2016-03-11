@@ -1,8 +1,21 @@
-from mock import patch
+import sys
 
-with patch('hooks.keystone_utils.register_configs') as register_configs:
-    with patch('hooks.keystone_utils.os_release') as os_release:
-        import git_reinstall
+from mock import patch, MagicMock
+
+# python-apt is not installed as part of test-requirements but is imported by
+# some charmhelpers modules so create a fake import.
+mock_apt = MagicMock()
+sys.modules['apt'] = mock_apt
+mock_apt.apt_pkg = MagicMock()
+
+# NOTE(hopem): we have to mock hooks.charmhelpers (not charmhelpers)
+#              otherwise the mock is not applied to action.hooks.*
+with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+    mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
+                            lambda *args, **kwargs: f(*args, **kwargs))
+    with patch('hooks.keystone_utils.register_configs') as register_configs:
+        with patch('hooks.keystone_utils.os_release') as os_release:
+            import git_reinstall
 
 from test_utils import (
     CharmTestCase

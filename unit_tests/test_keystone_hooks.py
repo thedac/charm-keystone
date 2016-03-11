@@ -1,10 +1,15 @@
-from mock import call, patch, MagicMock
 import os
 import json
 import uuid
 import yaml
+import sys
 
+from mock import call, patch, MagicMock
 from test_utils import CharmTestCase
+
+# python-apt is not installed as part of test-requirements but is imported by
+# some charmhelpers modules so create a fake import.
+sys.modules['apt'] = MagicMock()
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -17,7 +22,11 @@ _map = utils.restart_map
 utils.register_configs = MagicMock()
 utils.restart_map = MagicMock()
 
-import keystone_hooks as hooks
+with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+    mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
+                            lambda *args, **kwargs: f(*args, **kwargs))
+    import keystone_hooks as hooks
+
 from charmhelpers.contrib import unison
 
 utils.register_configs = _reg

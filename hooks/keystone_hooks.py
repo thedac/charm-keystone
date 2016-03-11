@@ -115,11 +115,14 @@ from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
 from charmhelpers.contrib.charmsupport import nrpe
 
+from charmhelpers.contrib.hardening.harden import harden
+
 hooks = Hooks()
 CONFIGS = register_configs()
 
 
 @hooks.hook('install.real')
+@harden()
 def install():
     status_set('maintenance', 'Executing pre-install')
     execd_preinstall()
@@ -138,6 +141,7 @@ def install():
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed(fatal=True)
+@harden()
 def config_changed():
     if config('prefer-ipv6'):
         status_set('maintenance', 'configuring ipv6')
@@ -166,6 +170,7 @@ def config_changed():
 @hooks.hook('config-changed-postupgrade')
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed(fatal=True)
+@harden()
 def config_changed_postupgrade():
     # Ensure ssl dir exists and is unison-accessible
     ensure_ssl_dir()
@@ -622,6 +627,7 @@ def configure_https():
 @hooks.hook('upgrade-charm')
 @restart_on_change(restart_map(), stopstart=True)
 @synchronize_ca_if_changed()
+@harden()
 def upgrade_charm():
     status_set('maintenance', 'Installing apt packages')
     apt_install(filter_installed_packages(determine_packages()))
@@ -643,6 +649,12 @@ def upgrade_charm():
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
         update_all_identity_relation_units()
+
+
+@hooks.hook('update-status')
+@harden()
+def update_status():
+    log('Updating status.')
 
 
 @hooks.hook('nrpe-external-master-relation-joined',
