@@ -69,7 +69,7 @@ class KeystoneManager(object):
         """Find the tenant_id of a given tenant"""
         tenants = [t._info for t in self.api.tenants.list()]
         for t in tenants:
-            if name == t['name']:
+            if name.lower() == t['name'].lower():
                 return t['id']
 
     def resolve_domain_id(self, name):
@@ -79,7 +79,7 @@ class KeystoneManager(object):
         """Find the role_id of a given role"""
         roles = [r._info for r in self.api.roles.list()]
         for r in roles:
-            if name == r['name']:
+            if name.lower() == r['name'].lower():
                 return r['id']
 
     def resolve_service_id(self, name, service_type=None):
@@ -87,10 +87,11 @@ class KeystoneManager(object):
         services = [s._info for s in self.api.services.list()]
         for s in services:
             if service_type:
-                if name == s['name'] and service_type == s['type']:
+                if (name.lower() == s['name'].lower() and
+                        service_type == s['type']):
                     return s['id']
             else:
-                if name == s['name']:
+                if name.lower() == s['name'].lower():
                     return s['id']
 
     def resolve_service_id_by_type(self, type):
@@ -111,7 +112,7 @@ class KeystoneManager2(KeystoneManager):
         """Find the user_id of a given user"""
         users = [u._info for u in self.api.users.list()]
         for u in users:
-            if name == u['name']:
+            if name.lower() == u['name'].lower():
                 return u['id']
 
     def create_endpoints(self, region, service_id, publicurl, adminurl,
@@ -159,14 +160,14 @@ class KeystoneManager3(KeystoneManager):
         """Find the tenant_id of a given tenant"""
         tenants = [t._info for t in self.api.projects.list()]
         for t in tenants:
-            if name == t['name']:
+            if name.lower() == t['name'].lower():
                 return t['id']
 
     def resolve_domain_id(self, name):
         """Find the domain_id of a given domain"""
         domains = [d._info for d in self.api.domains.list()]
         for d in domains:
-            if name == d['name']:
+            if name.lower() == d['name'].lower():
                 return d['id']
 
     def resolve_user_id(self, name, user_domain=None):
@@ -174,7 +175,7 @@ class KeystoneManager3(KeystoneManager):
         if user_domain:
             domain_id = self.resolve_domain_id(user_domain)
         for user in self.api.users.list():
-            if name == user.name:
+            if name.lower() == user.name.lower():
                 if user_domain:
                     if domain_id == user.domain_id:
                         return user.id

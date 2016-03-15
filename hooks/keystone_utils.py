@@ -670,15 +670,16 @@ def user_exists(name, domain=None):
         if not domain_id:
             error_out('Could not resolve domain_id for {} when checking if '
                       ' user {} exists'.format(domain, name))
-    for user in manager.api.users.list():
-        if user.name == name:
-            # In v3 Domains are seperate user namespaces so need to check that
-            # the domain matched if provided
-            if domain:
-                if domain_id == user.domain_id:
+    if manager.resolve_user_id(name, user_domain=domain):
+        for user in manager.api.users.list():
+            if user.name.lower() == name.lower():
+                # In v3 Domains are seperate user namespaces so need to check
+                # that the domain matched if provided
+                if domain:
+                    if domain_id == user.domain_id:
+                        return True
+                else:
                     return True
-            else:
-                return True
 
     return False
 
@@ -722,8 +723,7 @@ def get_manager(api_version=None):
 def create_role(name, user=None, tenant=None, domain=None):
     """Creates a role if it doesn't already exist. grants role to user"""
     manager = get_manager()
-    roles = [r._info for r in manager.api.roles.list()]
-    if not roles or name not in [r['name'] for r in roles]:
+    if not manager.resolve_role_id(name):
         manager.api.roles.create(name=name)
         log("Created new role '%s'" % name, level=DEBUG)
     else:
