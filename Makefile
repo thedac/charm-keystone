@@ -5,7 +5,6 @@ lint:
 	@tox -e pep8
 
 test:
-	@# Bundletester expects unit tests here.
 	@echo Starting unit tests...
 	@tox -e py27
 
