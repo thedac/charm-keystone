@@ -9,7 +9,6 @@ with patch('charmhelpers.core.hookenv.config') as config:
 TO_PATCH = [
     'api_port',
     'config',
-    'create_user',
     'os_release',
     'log',
     'get_ca',
@@ -208,13 +207,14 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'create_user')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
-            _resolve_address):
+            _resolve_address, create_user):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -250,8 +250,7 @@ class TestKeystoneUtils(CharmTestCase):
                                         internalurl='192.168.1.2')
         self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
-        self.create_user.assert_called_with('keystone', 'password', 'tenant',
-                                            None)
+        create_user.assert_called_with('keystone', 'password', 'tenant', None)
         self.grant_role.assert_called_with('keystone', 'Admin', 'tenant',
                                            None)
         self.create_role.assert_called_with('role1', 'keystone', 'tenant',
@@ -358,6 +357,43 @@ class TestKeystoneUtils(CharmTestCase):
         mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA',
                                                None)])
         mock_update_user_password.assert_has_calls([call('userA', 'passA')])
+
+    @patch.object(utils, 'get_manager')
+    def test_create_user_case_sensitivity(self, KeystoneManager):
+        """ Test case sensitivity of check for existence in
+            the user creation process """
+        mock_keystone = MagicMock()
+        KeystoneManager.return_value = mock_keystone
+
+        mock_user = MagicMock()
+        mock_keystone.resolve_user_id.return_value = mock_user
+        mock_keystone.api.users.list.return_value = [mock_user]
+
+        # User found is the same i.e. userA == userA
+        mock_user.name = 'userA'
+        utils.create_user('userA', 'passA')
+        mock_keystone.resolve_user_id.assert_called_with('userA',
+                                                         user_domain=None)
+        mock_keystone.create_user.assert_not_called()
+
+        # User found has different case but is the same
+        # i.e. Usera != userA
+        mock_user.name = 'Usera'
+        utils.create_user('userA', 'passA')
+        mock_keystone.resolve_user_id.assert_called_with('userA',
+                                                         user_domain=None)
+        mock_keystone.create_user.assert_not_called()
+
+        # User is different i.e. UserB != userA
+        mock_user.name = 'UserB'
+        utils.create_user('userA', 'passA')
+        mock_keystone.resolve_user_id.assert_called_with('userA',
+                                                         user_domain=None)
+        mock_keystone.create_user.assert_called_with(name='userA',
+                                                     password='passA',
+                                                     tenant_id=None,
+                                                     domain_id=None,
+                                                     email='juju@localhost')
 
     @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_user_credentials')
