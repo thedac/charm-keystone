@@ -2,7 +2,15 @@
 from keystoneclient.v2_0 import client
 from keystoneclient.v3 import client as keystoneclient_v3
 from keystoneclient.auth import token_endpoint
-from keystoneclient import session
+from keystoneclient import session, exceptions
+from charmhelpers.core.decorators import retry_on_exception
+
+# Early versions of keystoneclient lib do not have an explicit
+# ConnectionRefused
+if hasattr(exceptions, 'ConnectionRefused'):
+    econnrefused = exceptions.ConnectionRefused
+else:
+    econnrefused = exceptions.ConnectionError
 
 
 def _get_keystone_manager_class(endpoint, token, api_version):
@@ -19,12 +27,15 @@ def _get_keystone_manager_class(endpoint, token, api_version):
     raise ValueError('No manager found for api version {}'.format(api_version))
 
 
+@retry_on_exception(5, base_delay=3, exc_type=econnrefused)
 def get_keystone_manager(endpoint, token, api_version=None):
     """Return a keystonemanager for the correct API version
 
     If api_version has not been set then create a manager based on the endpoint
     Use this manager to query the catalogue and determine which api version
-    should actually be being used. Return the correct client based on that
+    should actually be being used. Return the correct client based on that.
+    Function is wrapped in a retry_on_exception to catch the case where the
+    keystone service is still initialising and not responding to requests yet.
     XXX I think the keystone client should be able to do version
         detection automatically so the code below could be greatly
         simplified
