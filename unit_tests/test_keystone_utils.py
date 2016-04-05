@@ -122,7 +122,7 @@ class TestKeystoneUtils(CharmTestCase):
     def test_determine_packages_git(self, _config):
         _config.return_value = openstack_origin_git
         result = utils.determine_packages()
-        ex = utils.BASE_PACKAGES + ['keystone'] + utils.BASE_GIT_PACKAGES
+        ex = utils.BASE_PACKAGES + utils.BASE_GIT_PACKAGES
         for p in utils.GIT_PACKAGE_BLACKLIST:
             ex.remove(p)
         self.assertEquals(set(ex), set(result))
