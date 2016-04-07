@@ -358,6 +358,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
@@ -393,7 +394,9 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_ensure_ssl_dirs,
                                               mock_ensure_ssl_cert_master,
                                               mock_log, git_requested,
-                                              mock_is_db_initialised):
+                                              mock_is_db_initialised,
+                                              mock_run_in_apache):
+        mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
         mock_is_db_initialised.return_value = True
@@ -422,6 +425,7 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -452,7 +456,9 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_update_all_id_rel_units,
                                                   ensure_ssl_dirs,
                                                   mock_ensure_ssl_cert_master,
-                                                  mock_log, git_requested):
+                                                  mock_log, git_requested,
+                                                  mock_run_in_apache):
+        mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
         mock_peer_units.return_value = []
@@ -472,6 +478,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.ensure_initial_admin.called)
         self.assertFalse(identity_changed.called)
 
+    @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
@@ -506,7 +513,9 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_ensure_ssl_dirs,
                                                    mock_ensure_ssl_cert_master,
                                                    mock_log, git_requested,
-                                                   mock_is_db_initialised):
+                                                   mock_is_db_initialised,
+                                                   mock_run_in_apache):
+        mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
         self.is_db_ready.return_value = True
@@ -537,6 +546,7 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'config_value_changed')
@@ -566,7 +576,9 @@ class KeystoneRelationTests(CharmTestCase):
                                         mock_ensure_ssl_cert_master,
                                         mock_log, config_val_changed,
                                         git_requested,
-                                        mock_initialise_pki):
+                                        mock_initialise_pki,
+                                        mock_run_in_apache):
+        mock_run_in_apache.return_value = False
         git_requested.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.openstack_upgrade_available.return_value = False
@@ -595,6 +607,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.openstack_upgrade_available.called)
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
 
+    @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'git_install_requested')
@@ -616,7 +629,9 @@ class KeystoneRelationTests(CharmTestCase):
                                                           config_value_changed,
                                                           git_requested,
                                                           mock_db_init,
-                                                          mock_initialise_pki):
+                                                          mock_initialise_pki,
+                                                          mock_run_in_apache):
+        mock_run_in_apache.return_value = False
         ensure_ssl_cert.return_value = False
         peer_units.return_value = []
 

@@ -46,9 +46,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._initialize_tests()
 
     def _assert_services(self, should_run):
+        if self.is_liberty_or_newer():
+            services = ("apache2", "haproxy")
+        else:
+            services = ("keystone-all", "apache2", "haproxy")
         u.get_unit_process_ids(
-            {self.keystone_sentry: ("keystone-all", "apache2", "haproxy")},
-            expect_success=should_run)
+            {self.keystone_sentry: services}, expect_success=should_run)
 
     def _add_services(self):
         """Add services
@@ -239,6 +242,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                                  'cinder-scheduler',
                                  'cinder-volume']
         }
+        if self.is_liberty_or_newer():
+            services[self.keystone_sentry] = ['apache2']
+        else:
+            services[self.keystone_sentry] = ['keystone']
         ret = u.validate_services_by_name(services)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
@@ -616,8 +623,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
         # Services which are expected to restart upon config change,
         # and corresponding config files affected by the change
-        services = {'keystone-all': '/etc/keystone/keystone.conf'}
-
+        if self.is_liberty_or_newer():
+            services = {'apache2': '/etc/keystone/keystone.conf'}
+        else:
+            services = {'keystone-all': '/etc/keystone/keystone.conf'}
         # Make config change, check for service restarts
         u.log.debug('Making config change on {}...'.format(juju_service))
         mtime = u.get_sentry_time(sentry)

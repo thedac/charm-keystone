@@ -29,6 +29,7 @@ from charmhelpers.core.hookenv import (
 
 from charmhelpers.core.host import (
     mkdir,
+    service_pause,
 )
 
 from charmhelpers.core.strutils import (
@@ -87,6 +88,7 @@ from keystone_utils import (
     is_service_present,
     delete_service_entry,
     assess_status,
+    run_in_apache,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -130,6 +132,8 @@ def install():
     status_set('maintenance', 'Installing apt packages')
     apt_update()
     apt_install(determine_packages(), fatal=True)
+    if run_in_apache():
+        service_pause('keystone')
 
     status_set('maintenance', 'Git install')
     git_install(config('openstack-origin-git'))
@@ -180,6 +184,8 @@ def config_changed_postupgrade():
     ensure_ssl_dirs()
 
     save_script_rc()
+    if run_in_apache():
+        service_pause('keystone')
     configure_https()
 
     update_nrpe_config()

@@ -127,6 +127,7 @@ TEMPLATES = 'templates/'
 BASE_PACKAGES = [
     'apache2',
     'haproxy',
+    'keystone',
     'openssl',
     'python-keystoneclient',
     'python-mysqldb',
@@ -187,6 +188,7 @@ ADMIN_DOMAIN = 'admin_domain'
 DEFAULT_DOMAIN = 'Default'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
+WSGI_KEYSTONE_CONF = '/etc/apache2/sites-enabled/wsgi-keystone.conf'
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -352,7 +354,23 @@ def resource_map():
         resource_map.pop(APACHE_CONF)
     else:
         resource_map.pop(APACHE_24_CONF)
+    if run_in_apache():
+        for cfile in resource_map:
+            svcs = resource_map[cfile]['services']
+            if 'keystone' in svcs:
+                svcs.remove('keystone')
+                if 'apache2' not in svcs:
+                    svcs.append('apache2')
+        resource_map[WSGI_KEYSTONE_CONF] = {
+            'contexts': [keystone_context.WSGIWorkerConfigContext(),
+                         keystone_context.KeystoneContext()],
+            'services': ['apache2']
+        }
     return resource_map
+
+
+def run_in_apache():
+    return os_release('keystone') >= 'liberty'
 
 
 def register_configs():
@@ -394,7 +412,8 @@ def determine_packages():
     if git_install_requested():
         packages |= set(BASE_GIT_PACKAGES)
         packages -= set(GIT_PACKAGE_BLACKLIST)
-
+    if run_in_apache():
+        packages.add('libapache2-mod-wsgi')
     return sorted(packages)
 
 
@@ -452,19 +471,23 @@ def is_db_initialised():
     return False
 
 
+def keystone_service():
+    return {True: 'apache2', False: 'keystone'}[run_in_apache()]
+
+
 # NOTE(jamespage): Retry deals with sync issues during one-shot HA deploys.
 #                  mysql might be restarting or suchlike.
 @retry_on_exception(5, base_delay=3, exc_type=subprocess.CalledProcessError)
 def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
-    service_stop('keystone')
+    service_stop(keystone_service())
     # NOTE(jamespage) > icehouse creates a log file as root so use
     # sudo to execute as keystone otherwise keystone won't start
     # afterwards.
     cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
-    service_start('keystone')
+    service_start(keystone_service())
     time.sleep(10)
     peer_store('db-initialised', 'True')
 
@@ -1974,7 +1997,7 @@ def git_post_install(projects_yaml):
 
     # Don't restart if the unit is supposed to be paused.
     if not is_unit_paused_set():
-        service_restart('keystone')
+        service_restart(keystone_service())
 
 
 def check_optional_relations(configs):
