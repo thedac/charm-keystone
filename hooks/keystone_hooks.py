@@ -89,6 +89,7 @@ from keystone_utils import (
     delete_service_entry,
     assess_status,
     run_in_apache,
+    restart_function_map,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -143,7 +144,7 @@ def install():
 
 
 @hooks.hook('config-changed')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed(fatal=True)
 @harden()
 def config_changed():
@@ -172,7 +173,7 @@ def config_changed():
 
 
 @hooks.hook('config-changed-postupgrade')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed(fatal=True)
 @harden()
 def config_changed_postupgrade():
@@ -315,7 +316,7 @@ def leader_init_db_if_ready(use_current_context=False):
 
 
 @hooks.hook('shared-db-relation-changed')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed()
 def db_changed():
     if 'shared-db' not in CONFIGS.complete_contexts():
@@ -328,7 +329,7 @@ def db_changed():
 
 
 @hooks.hook('pgsql-db-relation-changed')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed()
 def pgsql_db_changed():
     if 'pgsql-db' not in CONFIGS.complete_contexts():
@@ -341,7 +342,7 @@ def pgsql_db_changed():
 
 
 @hooks.hook('identity-service-relation-changed')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
     CONFIGS.write_all()
@@ -587,7 +588,7 @@ def ha_joined(relation_id=None):
 
 
 @hooks.hook('ha-relation-changed')
-@restart_on_change(restart_map())
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 @synchronize_ca_if_changed()
 def ha_changed():
     CONFIGS.write_all()

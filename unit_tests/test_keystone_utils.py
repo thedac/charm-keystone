@@ -832,3 +832,43 @@ class TestKeystoneUtils(CharmTestCase):
             utils._pause_resume_helper(f, 'some-config')
             asf.assert_called_once_with('some-config')
             f.assert_called_once_with('assessor', services='s1', ports='p1')
+
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'restart_pid_check')
+    def test_restart_function_map(self, restart_pid_check, run_in_apache):
+        run_in_apache.return_value = True
+        self.assertEqual(utils.restart_function_map(),
+                         {'apache2': restart_pid_check})
+
+    @patch.object(utils, 'run_in_apache')
+    def test_restart_function_map_legacy(self, run_in_apache):
+        run_in_apache.return_value = False
+        self.assertEqual(utils.restart_function_map(), {})
+
+    def test_restart_pid_check(self):
+        self.subprocess.call.return_value = 1
+        utils.restart_pid_check('apache2')
+        self.service_stop.assert_called_once_with('apache2')
+        self.service_start.assert_called_once_with('apache2')
+        self.subprocess.call.assert_called_once_with(['pgrep', 'apache2'])
+
+    def test_restart_pid_check_ptable_string(self):
+        self.subprocess.call.return_value = 1
+        utils.restart_pid_check('apache2', ptable_string='httpd')
+        self.service_stop.assert_called_once_with('apache2')
+        self.service_start.assert_called_once_with('apache2')
+        self.subprocess.call.assert_called_once_with(['pgrep', 'httpd'])
+
+    def test_restart_pid_check_ptable_string_retry(self):
+        call_returns = [1, 0, 0]
+        self.subprocess.call.side_effect = lambda x: call_returns.pop()
+        utils.restart_pid_check('apache2', ptable_string='httpd')
+        self.service_stop.assert_called_once_with('apache2')
+        self.service_start.assert_called_once_with('apache2')
+#        self.subprocess.call.assert_called_once_with(['pgrep', 'httpd'])
+        expected = [
+            call(['pgrep', 'httpd']),
+            call(['pgrep', 'httpd']),
+            call(['pgrep', 'httpd']),
+        ]
+        self.assertEquals(self.subprocess.call.call_args_list, expected)

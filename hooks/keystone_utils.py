@@ -369,6 +369,35 @@ def resource_map():
     return resource_map
 
 
+def restart_pid_check(service_name, ptable_string=None):
+    """Stop a service, check the processes are gone, start service
+    @param service_name: service name as init system knows it
+    @param ptable_string: string to look for in process table to match service
+    """
+
+    @retry_on_exception(5, base_delay=3, exc_type=AssertionError)
+    def check_pids_gone(svc_string):
+        log("Checking no pids for {} exist".format(svc_string), level=INFO)
+        assert(subprocess.call(["pgrep", svc_string]) == 1)
+
+    if not ptable_string:
+        ptable_string = service_name
+    service_stop(service_name)
+    check_pids_gone(ptable_string)
+    service_start(service_name)
+
+
+def restart_function_map():
+    """Return a dict of services with any custom functions that should be
+       used to restart that service
+    @returns dict of {'svc1': restart_func, 'svc2', other_func, ...}
+    """
+    rfunc_map = {}
+    if run_in_apache():
+        rfunc_map['apache2'] = restart_pid_check
+    return rfunc_map
+
+
 def run_in_apache():
     return os_release('keystone') >= 'liberty'
 

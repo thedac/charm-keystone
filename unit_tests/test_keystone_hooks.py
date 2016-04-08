@@ -25,7 +25,8 @@ utils.restart_map = MagicMock()
 with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
-    import keystone_hooks as hooks
+    with patch('keystone_utils.run_in_apache') as mock_run_in_apache:
+        import keystone_hooks as hooks
 
 from charmhelpers.contrib import unison
 
@@ -82,6 +83,7 @@ TO_PATCH = [
     'is_service_present',
     'delete_service_entry',
     'os_release',
+    'service_pause',
 ]
 
 
