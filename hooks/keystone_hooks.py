@@ -25,6 +25,7 @@ from charmhelpers.core.hookenv import (
     related_units,
     unit_get,
     status_set,
+    network_get_primary_address,
 )
 
 from charmhelpers.core.host import (
@@ -245,9 +246,17 @@ def db_joined():
         sync_db_with_multi_ipv6_addresses(config('database'),
                                           config('database-user'))
     else:
+        host = None
+        try:
+            # NOTE: try to use network spaces
+            host = network_get_primary_address('shared-db')
+        except NotImplementedError:
+            # NOTE: fallback to private-address
+            host = unit_get('private-address')
+
         relation_set(database=config('database'),
                      username=config('database-user'),
-                     hostname=unit_get('private-address'))
+                     hostname=host)
 
 
 @hooks.hook('pgsql-db-relation-joined')

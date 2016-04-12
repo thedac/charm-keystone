@@ -47,6 +47,7 @@ TO_PATCH = [
     'related_units',
     'unit_get',
     'peer_echo',
+    'network_get_primary_address',
     # charmhelpers.core.host
     'apt_install',
     'apt_update',
@@ -172,6 +173,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_hooks_config.side_effect = cfg
         mock_config.side_effect = cfg
 
+        self.network_get_primary_address.side_effect = NotImplementedError
         self.is_relation_made.return_value = False
         self.unit_get.return_value = 'keystone.foohost.com'
         hooks.db_joined()
@@ -180,6 +182,16 @@ class KeystoneRelationTests(CharmTestCase):
                                              hostname='keystone.foohost.com')
         self.unit_get.assert_called_with('private-address')
 
+        self.network_get_primary_address.side_effect = None
+        self.network_get_primary_address.return_value = '192.168.20.1'
+        self.is_relation_made.return_value = False
+        self.unit_get.return_value = 'keystone.foohost.com'
+        hooks.db_joined()
+        self.relation_set.assert_called_with(database='keystone',
+                                             username='keystone',
+                                             hostname='192.168.20.1')
+
+        self.network_get_primary_address.side_effect = NotImplementedError
         cfg_dict['prefer-ipv6'] = True
         mock_hooks_config.side_effect = mock_cls_config()
         mock_relation_ids.return_value = ['shared-db']
