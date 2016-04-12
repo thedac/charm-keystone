@@ -54,6 +54,7 @@ from charmhelpers.contrib.openstack.utils import (
 
 from keystone_utils import (
     add_service_to_keystone,
+    add_credentials_to_keystone,
     determine_packages,
     do_openstack_upgrade_reexec,
     ensure_initial_admin,
@@ -205,9 +206,6 @@ def config_changed_postupgrade():
 
     update_all_identity_relation_units()
 
-    for rid in relation_ids('identity-admin'):
-        admin_relation_changed(rid)
-
     # Ensure sync request is sent out (needed for any/all ssl change)
     send_ssl_sync_request()
 
@@ -298,6 +296,13 @@ def update_all_identity_relation_units(check_db_ready=True):
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
             identity_changed(relation_id=rid, remote_unit=unit)
+    log('Firing admin_relation_changed hook for all related services.')
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+    log('Firing identity_credentials_changed hook for all related services.')
+    for rid in relation_ids('identity-credentials'):
+        for unit in related_units(rid):
+            identity_credentials_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)
@@ -408,6 +413,33 @@ def identity_changed(relation_id=None, remote_unit=None):
         send_notifications(notifications)
 
 
+@hooks.hook('identity-credentials-relation-joined',
+            'identity-credentials-relation-changed')
+def identity_credentials_changed(relation_id=None, remote_unit=None):
+    """Update the identity credentials relation on change
+
+    Calls add_credentials_to_keystone
+
+    :param relation_id: Relation id of the relation
+    :param remote_unit: Related unit on the relation
+    """
+    if is_elected_leader(CLUSTER_RES):
+        if not is_db_ready():
+            log("identity-credentials-relation-changed hook fired before db "
+                "ready - deferring until db ready", level=WARNING)
+            return
+
+        if not is_db_initialised():
+            log("Database not yet initialised - deferring "
+                "identity-credentials-relation updates", level=INFO)
+            return
+
+        # Create the tenant user
+        add_credentials_to_keystone(relation_id, remote_unit)
+    else:
+        log('Deferring identity_credentials_changed() to service leader.')
+
+
 def send_ssl_sync_request():
     """Set sync request on cluster relation.
 
@@ -511,9 +543,6 @@ def cluster_changed():
     else:
         update_all_identity_relation_units()
 
-    for rid in relation_ids('identity-admin'):
-        admin_relation_changed(rid)
-
     if not is_elected_leader(CLUSTER_RES) and is_ssl_cert_master():
         # Force and sync and trigger a sync master re-election since we are not
         # leader anymore.
@@ -537,10 +566,7 @@ def leader_settings_changed():
     # sure only the leader is running the cron job.
     CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
 
-    log('Firing identity_changed hook for all related services.')
-    for rid in relation_ids('identity-service'):
-        for unit in related_units(rid):
-            identity_changed(relation_id=rid, remote_unit=unit)
+    update_all_identity_relation_units()
 
 
 @hooks.hook('ha-relation-joined')

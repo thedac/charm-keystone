@@ -1610,10 +1610,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                   'internal_url'])
     https_cns = []
 
-    if https():
-        protocol = 'https'
-    else:
-        protocol = 'http'
+    protocol = get_protocol()
+
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
         if 'None' in settings.itervalues():
@@ -1630,15 +1628,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
 
-            https_service_endpoints = config('https-service-endpoints')
-            if (https_service_endpoints and
-                    bool_from_string(https_service_endpoints)):
-                # Pass CA cert as client will need it to
-                # verify https connections
-                ca = get_ca(user=SSH_USER)
-                ca_bundle = ca.get_ca_bundle()
-                relation_data['https_keystone'] = 'True'
-                relation_data['ca_cert'] = b64encode(ca_bundle)
+            # Get and pass CA bundle settings
+            relation_data.update(get_ssl_ca_settings())
 
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
@@ -1779,15 +1770,106 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         cert, key = ca.get_cert_and_key(common_name=internal_cn)
         relation_data['ssl_cert'] = b64encode(cert)
         relation_data['ssl_key'] = b64encode(key)
-        ca_bundle = ca.get_ca_bundle()
-        relation_data['ca_cert'] = b64encode(ca_bundle)
-        relation_data['https_keystone'] = 'True'
+
+        # Get and pass CA bundle settings
+        relation_data.update(get_ssl_ca_settings())
 
     peer_store_and_set(relation_id=relation_id, **relation_data)
     # NOTE(dosaboy): '__null__' settings are for peer relation only so that
     # settings can flushed so we filter them out for non-peer relation.
     filtered = filter_null(relation_data)
     relation_set(relation_id=relation_id, **filtered)
+
+
+def add_credentials_to_keystone(relation_id=None, remote_unit=None):
+    """Add authentication credentials without a service endpoint
+
+    Creates credentials and then peer stores and relation sets them
+
+    :param relation_id: Relation id of the relation
+    :param remote_unit: Related unit on the relation
+    """
+    manager = get_manager()
+    settings = relation_get(rid=relation_id, unit=remote_unit)
+
+    credentials_username = settings.get('username')
+    if not credentials_username:
+        log("identity-credentials peer has not yet set username")
+        return
+
+    if get_api_version() == 2:
+        domain = None
+    else:
+        domain = settings.get('domain') or DEFAULT_DOMAIN
+
+    # Use passed project or the service project
+    credentials_project = settings.get('project') or config('service-tenant')
+    create_tenant(credentials_project)
+
+    # Use passed grants or default to granting the Admin role
+    credentials_grants = (get_requested_grants(settings) or
+                          [config('admin-role')])
+
+    # Create the user
+    credentials_password = create_user_credentials(
+        credentials_username,
+        get_service_password(credentials_username),
+        project=credentials_project,
+        new_roles=get_requested_roles(settings),
+        grants=credentials_grants,
+        domain=domain)
+
+    protocol = get_protocol()
+
+    relation_data = {
+        "auth_host": resolve_address(ADMIN),
+        "credentials_host": resolve_address(PUBLIC),
+        "credentials_port": config("service-port"),
+        "auth_port": config("admin-port"),
+        "credentials_username": credentials_username,
+        "credentials_password": credentials_password,
+        "credentials_project": credentials_project,
+        "credentials_project_id":
+            manager.resolve_tenant_id(credentials_project),
+        "auth_protocol": protocol,
+        "credentials_protocol": protocol,
+        "api_version": get_api_version(),
+        "region": config('region')
+    }
+    # Get and pass CA bundle settings
+    relation_data.update(get_ssl_ca_settings())
+
+    peer_store_and_set(relation_id=relation_id, **relation_data)
+
+
+def get_ssl_ca_settings():
+    """ Get the Certificate Authority settings required to use the CA
+
+    :returns: Dictionary with https_keystone and ca_cert set
+    """
+    ca_data = {}
+    https_service_endpoints = config('https-service-endpoints')
+    if (https_service_endpoints and
+            bool_from_string(https_service_endpoints)):
+        # Pass CA cert as client will need it to
+        # verify https connections
+        ca = get_ca(user=SSH_USER)
+        ca_bundle = ca.get_ca_bundle()
+        ca_data['https_keystone'] = 'True'
+        ca_data['ca_cert'] = b64encode(ca_bundle)
+    return ca_data
+
+
+def get_protocol():
+    """Determine the http protocol
+
+    :returns: http or https
+    """
+    if https():
+        protocol = 'https'
+    else:
+        protocol = 'http'
+    return protocol
 
 
 def ensure_valid_service(service):
@@ -1812,6 +1894,20 @@ def get_requested_roles(settings):
     if ('requested_roles' in settings and
             settings['requested_roles'] not in ['None', None]):
         return settings['requested_roles'].split(',')
+    else:
+        return []
+
+
+def get_requested_grants(settings):
+    """Retrieve any valid requested_grants from dict settings
+
+    :param settings: dictionary which may contain key, requested_grants,
+                     with comma delimited list of roles to grant.
+    :returns: list of roles to grant
+    """
+    if ('requested_grants' in settings and
+            settings['requested_grants'] not in ['None', None]):
+        return settings['requested_grants'].split(',')
     else:
         return []
 
@@ -1967,10 +2063,10 @@ def git_pre_install():
     add_user_to_group('keystone', 'keystone')
 
     for d in dirs:
-        mkdir(d, owner='keystone', group='keystone', perms=0755, force=False)
+        mkdir(d, owner='keystone', group='keystone', perms=0o755, force=False)
 
     for l in logs:
-        write_file(l, '', owner='keystone', group='keystone', perms=0600)
+        write_file(l, '', owner='keystone', group='keystone', perms=0o600)
 
 
 def git_post_install(projects_yaml):

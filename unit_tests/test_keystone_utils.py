@@ -1,6 +1,7 @@
 from mock import patch, call, MagicMock, Mock
 from test_utils import CharmTestCase
 import os
+from base64 import b64encode
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -859,7 +860,9 @@ class TestKeystoneUtils(CharmTestCase):
         self.service_start.assert_called_once_with('apache2')
         self.subprocess.call.assert_called_once_with(['pgrep', 'httpd'])
 
-    def test_restart_pid_check_ptable_string_retry(self):
+    # Do not sleep() to speed up manual runs.
+    @patch('charmhelpers.core.decorators.time')
+    def test_restart_pid_check_ptable_string_retry(self, mock_time):
         call_returns = [1, 0, 0]
         self.subprocess.call.side_effect = lambda x: call_returns.pop()
         utils.restart_pid_check('apache2', ptable_string='httpd')
@@ -872,3 +875,258 @@ class TestKeystoneUtils(CharmTestCase):
             call(['pgrep', 'httpd']),
         ]
         self.assertEquals(self.subprocess.call.call_args_list, expected)
+
+    def test_get_requested_grants(self):
+        settings = {'requested_grants': 'Admin,Member'}
+        expected_results = ['Admin', 'Member']
+        self.assertEqual(utils.get_requested_grants(settings),
+                         expected_results)
+        settings = {'not_requsted_grants': 'something else'}
+        expected_results = []
+        self.assertEqual(utils.get_requested_grants(settings),
+                         expected_results)
+
+    @patch.object(utils, 'https')
+    def test_get_protocol(self, https):
+        # http
+        https.return_value = False
+        protocol = utils.get_protocol()
+        self.assertEqual(protocol, 'http')
+        # https
+        https.return_value = True
+        protocol = utils.get_protocol()
+        self.assertEqual(protocol, 'https')
+
+    def test_get_ssl_ca_settings(self):
+        CA = MagicMock()
+        CA.get_ca_bundle.return_value = 'certstring'
+        self.test_config.set('https-service-endpoints', 'True')
+        self.get_ca.return_value = CA
+        expected_settings = {'https_keystone': 'True',
+                             'ca_cert': b64encode('certstring')}
+        settings = utils.get_ssl_ca_settings()
+        self.assertEqual(settings, expected_settings)
+
+    @patch.object(utils, 'get_manager')
+    def test_add_credentials_keystone_not_ready(self, get_manager):
+        """ Verify add_credentials_to_keystone when the relation
+            data is incomplete """
+        relation_id = 'identity-credentials:0'
+        remote_unit = 'unit/0'
+        self.relation_get.return_value = {}
+        utils.add_credentials_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        self.log.assert_called_with('identity-credentials peer has not yet '
+                                    'set username')
+
+    @patch.object(utils, 'create_user_credentials')
+    @patch.object(utils, 'get_protocol')
+    @patch.object(utils, 'resolve_address')
+    @patch.object(utils, 'get_api_version')
+    @patch.object(utils, 'get_manager')
+    def test_add_credentials_keystone_username_only(self, get_manager,
+                                                    get_api_version,
+                                                    resolve_address,
+                                                    get_protocol,
+                                                    create_user_credentials):
+        """ Verify add_credentials with only username """
+        manager = MagicMock()
+        manager.resolve_tenant_id.return_value = 'abcdef0123456789'
+        get_manager.return_value = manager
+        remote_unit = 'unit/0'
+        relation_id = 'identity-credentials:0'
+        get_api_version.return_value = 2
+        get_protocol.return_value = 'http'
+        resolve_address.return_value = '10.10.10.10'
+        create_user_credentials.return_value = 'password'
+        self.relation_get.return_value = {'username': 'requester'}
+        self.get_service_password.return_value = 'password'
+        self.get_requested_roles.return_value = []
+        self.test_config.set('admin-port', 80)
+        self.test_config.set('service-port', 81)
+        self.test_config.set('service-tenant', 'services')
+        relation_data = {'auth_host': '10.10.10.10',
+                         'credentials_host': '10.10.10.10',
+                         'credentials_port': 81,
+                         'auth_port': 80,
+                         'auth_protocol': 'http',
+                         'credentials_username': 'requester',
+                         'credentials_protocol': 'http',
+                         'credentials_password': 'password',
+                         'credentials_project': 'services',
+                         'credentials_project_id': 'abcdef0123456789',
+                         'region': 'RegionOne',
+                         'api_version': 2}
+
+        utils.add_credentials_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        create_user_credentials.assert_called_with('requester', 'password',
+                                                   domain=None,
+                                                   new_roles=[],
+                                                   grants=['Admin'],
+                                                   project='services')
+        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
+                                                   **relation_data)
+
+    @patch.object(utils, 'create_user_credentials')
+    @patch.object(utils, 'get_protocol')
+    @patch.object(utils, 'resolve_address')
+    @patch.object(utils, 'get_api_version')
+    @patch.object(utils, 'get_manager')
+    def test_add_credentials_keystone_kv3(self, get_manager,
+                                          get_api_version,
+                                          resolve_address,
+                                          get_protocol,
+                                          create_user_credentials):
+        """ Verify add_credentials with Keystone V3 """
+        manager = MagicMock()
+        manager.resolve_tenant_id.return_value = 'abcdef0123456789'
+        get_manager.return_value = manager
+        remote_unit = 'unit/0'
+        relation_id = 'identity-credentials:0'
+        get_api_version.return_value = 3
+        get_protocol.return_value = 'http'
+        resolve_address.return_value = '10.10.10.10'
+        create_user_credentials.return_value = 'password'
+        self.relation_get.return_value = {'username': 'requester',
+                                          'domain': 'Non-Default'}
+        self.get_service_password.return_value = 'password'
+        self.get_requested_roles.return_value = []
+        self.test_config.set('admin-port', 80)
+        self.test_config.set('service-port', 81)
+        relation_data = {'auth_host': '10.10.10.10',
+                         'credentials_host': '10.10.10.10',
+                         'credentials_port': 81,
+                         'auth_port': 80,
+                         'auth_protocol': 'http',
+                         'credentials_username': 'requester',
+                         'credentials_protocol': 'http',
+                         'credentials_password': 'password',
+                         'credentials_project': 'services',
+                         'credentials_project_id': 'abcdef0123456789',
+                         'region': 'RegionOne',
+                         'api_version': 3}
+
+        utils.add_credentials_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        create_user_credentials.assert_called_with('requester', 'password',
+                                                   domain='Non-Default',
+                                                   new_roles=[],
+                                                   grants=['Admin'],
+                                                   project='services')
+        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
+                                                   **relation_data)
+
+    @patch.object(utils, 'create_tenant')
+    @patch.object(utils, 'create_user_credentials')
+    @patch.object(utils, 'get_protocol')
+    @patch.object(utils, 'resolve_address')
+    @patch.object(utils, 'get_api_version')
+    @patch.object(utils, 'get_manager')
+    def test_add_credentials_keystone_roles_grants(self, get_manager,
+                                                   get_api_version,
+                                                   resolve_address,
+                                                   get_protocol,
+                                                   create_user_credentials,
+                                                   create_tenant):
+        """ Verify add_credentials with all relation settings """
+        manager = MagicMock()
+        manager.resolve_tenant_id.return_value = 'abcdef0123456789'
+        get_manager.return_value = manager
+        remote_unit = 'unit/0'
+        relation_id = 'identity-credentials:0'
+        get_api_version.return_value = 2
+        get_protocol.return_value = 'http'
+        resolve_address.return_value = '10.10.10.10'
+        create_user_credentials.return_value = 'password'
+        self.relation_get.return_value = {'username': 'requester',
+                                          'project': 'myproject',
+                                          'requested_roles': 'New,Member',
+                                          'requested_grants': 'New,Member'}
+        self.get_service_password.return_value = 'password'
+        self.get_requested_roles.return_value = ['New', 'Member']
+        self.test_config.set('admin-port', 80)
+        self.test_config.set('service-port', 81)
+        relation_data = {'auth_host': '10.10.10.10',
+                         'credentials_host': '10.10.10.10',
+                         'credentials_port': 81,
+                         'auth_port': 80,
+                         'auth_protocol': 'http',
+                         'credentials_username': 'requester',
+                         'credentials_protocol': 'http',
+                         'credentials_password': 'password',
+                         'credentials_project': 'myproject',
+                         'credentials_project_id': 'abcdef0123456789',
+                         'region': 'RegionOne',
+                         'api_version': 2}
+
+        utils.add_credentials_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        create_tenant.assert_called_with('myproject')
+        create_user_credentials.assert_called_with('requester', 'password',
+                                                   domain=None,
+                                                   new_roles=['New', 'Member'],
+                                                   grants=['New', 'Member'],
+                                                   project='myproject')
+        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
+                                                   **relation_data)
+
+    @patch.object(utils, 'get_ssl_ca_settings')
+    @patch.object(utils, 'create_user_credentials')
+    @patch.object(utils, 'get_protocol')
+    @patch.object(utils, 'resolve_address')
+    @patch.object(utils, 'get_api_version')
+    @patch.object(utils, 'get_manager')
+    def test_add_credentials_keystone_ssl(self, get_manager,
+                                          get_api_version,
+                                          resolve_address,
+                                          get_protocol,
+                                          create_user_credentials,
+                                          get_ssl_ca_settings):
+        """ Verify add_credentials with SSL """
+        manager = MagicMock()
+        manager.resolve_tenant_id.return_value = 'abcdef0123456789'
+        get_manager.return_value = manager
+        remote_unit = 'unit/0'
+        relation_id = 'identity-credentials:0'
+        get_api_version.return_value = 2
+        get_protocol.return_value = 'https'
+        resolve_address.return_value = '10.10.10.10'
+        create_user_credentials.return_value = 'password'
+        get_ssl_ca_settings.return_value = {'https_keystone': 'True',
+                                            'ca_cert': 'base64certstring'}
+        self.relation_get.return_value = {'username': 'requester'}
+        self.get_service_password.return_value = 'password'
+        self.get_requested_roles.return_value = []
+        self.test_config.set('admin-port', 80)
+        self.test_config.set('service-port', 81)
+        self.test_config.set('https-service-endpoints', 'True')
+        relation_data = {'auth_host': '10.10.10.10',
+                         'credentials_host': '10.10.10.10',
+                         'credentials_port': 81,
+                         'auth_port': 80,
+                         'auth_protocol': 'https',
+                         'credentials_username': 'requester',
+                         'credentials_protocol': 'https',
+                         'credentials_password': 'password',
+                         'credentials_project': 'services',
+                         'credentials_project_id': 'abcdef0123456789',
+                         'region': 'RegionOne',
+                         'api_version': 2,
+                         'https_keystone': 'True',
+                         'ca_cert': 'base64certstring'}
+
+        utils.add_credentials_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        create_user_credentials.assert_called_with('requester', 'password',
+                                                   domain=None,
+                                                   new_roles=[],
+                                                   grants=['Admin'],
+                                                   project='services')
+        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
+                                                   **relation_data)

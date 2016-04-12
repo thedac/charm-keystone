@@ -23,6 +23,8 @@ provides:
     interface: keystone-notifications
   identity-admin:
     interface: keystone-admin
+  identity-credentials:
+    interface: keystone-credentials
 requires:
   shared-db:
     interface: mysql-shared
