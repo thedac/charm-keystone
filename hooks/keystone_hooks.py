@@ -54,6 +54,7 @@ from charmhelpers.contrib.openstack.utils import (
 
 from keystone_utils import (
     add_service_to_keystone,
+    add_credentials_to_keystone,
     determine_packages,
     do_openstack_upgrade_reexec,
     ensure_initial_admin,
@@ -290,6 +291,10 @@ def update_all_identity_relation_units(check_db_ready=True):
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
             identity_changed(relation_id=rid, remote_unit=unit)
+    log('Firing identity_credentials_changed hook for all related services.')
+    for rid in relation_ids('identity-credentials'):
+        for unit in related_units(rid):
+            identity_credentials_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)
@@ -398,6 +403,26 @@ def identity_changed(relation_id=None, remote_unit=None):
 
     if notifications:
         send_notifications(notifications)
+
+
+@hooks.hook('identity-credentials-relation-joined',
+            'identity-credentials-relation-changed')
+def identity_credentials_changed(relation_id=None, remote_unit=None):
+    if is_elected_leader(CLUSTER_RES):
+        if not is_db_ready():
+            log("identity-credentials-relation-changed hook fired before db "
+                "ready - deferring until db ready", level=WARNING)
+            return
+
+        if not is_db_initialised():
+            log("Database not yet initialised - deferring "
+                "identity-credentials-relation updates", level=INFO)
+            return
+
+        # Create the tenant user
+        add_credentials_to_keystone(relation_id, remote_unit)
+    else:
+        log('Deferring identity_credentials_changed() to service leader.')
 
 
 def send_ssl_sync_request():
@@ -533,6 +558,10 @@ def leader_settings_changed():
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
             identity_changed(relation_id=rid, remote_unit=unit)
+    log('Firing identity_credentials_changed hook for all related services.')
+    for rid in relation_ids('identity-credentials'):
+        for unit in related_units(rid):
+            identity_credentials_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('ha-relation-joined')

@@ -37,6 +37,9 @@ The following interfaces are provided:
     - identity-notifications: Used to broadcast messages to any services
       listening on the interface.
 
+    - identity-credentials: Charms use this relation to obtain keystone
+      credentials without creating a service catalog entry.
+
 Database
 --------
 

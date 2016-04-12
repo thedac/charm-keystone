@@ -1789,6 +1789,65 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     relation_set(relation_id=relation_id, **filtered)
 
 
+def add_credentials_to_keystone(relation_id=None, remote_unit=None):
+    """ Add authentiaction credentials without a service endpoint """
+    manager = get_manager()
+    settings = relation_get(rid=relation_id, unit=remote_unit)
+
+    credentials_username = settings.get('username')
+    if not credentials_username:
+        log("identity-tenent peer has not yet set service")
+        return
+
+    roles = get_requested_roles(settings)
+    # XXX variable by new tenant
+    credentials_password = create_service_credentials(credentials_username,
+                                                      new_roles=roles)
+    if https():
+        protocol = 'https'
+    else:
+        protocol = 'http'
+
+    # Allow the remote service to request creation of any additional
+    # roles. Currently used by Horizon
+    for role in get_requested_roles(settings):
+        log("Creating requested role: %s" % role)
+        create_role(role)
+
+    # XXX Use passed tenant or service tenant
+    # FIXME what if it changes?
+    credentials_tenant = settings.get('tenant') or config('service-tenant')
+
+    domain_name = 'Default' if manager.api_version == 3 else None
+    # XXX variable by new tenant
+    grant_role(credentials_username, 'Admin', credentials_tenant, domain_name)
+
+    relation_data = {
+        "auth_host": resolve_address(ADMIN),
+        "credentials_host": resolve_address(PUBLIC),
+        "credentials_port": config("credentials-port"),
+        "auth_port": config("admin-port"),
+        "credentials_username": credentials_username,
+        "credentials_password": credentials_password,
+        "credentials_tenant": credentials_tenant,
+        "credentials_tenant_id": manager.resolve_tenant_id(credentials_tenant),
+        "auth_protocol": protocol,
+        "credentials_protocol": protocol,
+        "api_version": get_api_version(),
+    }
+    https_service_endpoints = config('https-service-endpoints')
+    if (https_service_endpoints and
+            bool_from_string(https_service_endpoints)):
+        # Pass CA cert as client will need it to
+        # verify https connections
+        ca = get_ca(user=SSH_USER)
+        ca_bundle = ca.get_ca_bundle()
+        relation_data['https_keystone'] = 'True'
+        relation_data['ca_cert'] = b64encode(ca_bundle)
+
+    peer_store_and_set(relation_id=relation_id, **relation_data)
+
+
 def ensure_valid_service(service):
     if service not in valid_services.keys():
         log("Invalid service requested: '%s'" % service)
@@ -1966,10 +2025,10 @@ def git_pre_install():
     add_user_to_group('keystone', 'keystone')
 
     for d in dirs:
-        mkdir(d, owner='keystone', group='keystone', perms=0755, force=False)
+        mkdir(d, owner='keystone', group='keystone', perms=0o755, force=False)
 
     for l in logs:
-        write_file(l, '', owner='keystone', group='keystone', perms=0600)
+        write_file(l, '', owner='keystone', group='keystone', perms=0o600)
 
 
 def git_post_install(projects_yaml):
