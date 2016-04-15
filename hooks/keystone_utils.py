@@ -1825,7 +1825,7 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
     relation_data = {
         "auth_host": resolve_address(ADMIN),
         "credentials_host": resolve_address(PUBLIC),
-        "credentials_port": config("credentials-port"),
+        "credentials_port": config("service-port"),
         "auth_port": config("admin-port"),
         "credentials_username": credentials_username,
         "credentials_password": credentials_password,

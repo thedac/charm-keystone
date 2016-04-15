@@ -23,7 +23,7 @@ provides:
     interface: keystone-notifications
   identity-admin:
     interface: keystone-admin
- identity-credentials:
+  identity-credentials:
     interface: keystone-credentials
 requires:
   shared-db:
