@@ -31,6 +31,7 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     service_pause,
+    service_reload,
 )
 
 from charmhelpers.core.strutils import (
@@ -91,6 +92,7 @@ from keystone_utils import (
     assess_status,
     run_in_apache,
     restart_function_map,
+    WSGI_KEYSTONE_CONF,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -187,7 +189,13 @@ def config_changed_postupgrade():
 
     save_script_rc()
     if run_in_apache():
+        # Need to ensure mod_wsgi is installed and apache2 is reloaded
+        # immediatly as charm querys its local keystone before restart
+        # decorator can fire
+        apt_install(filter_installed_packages(determine_packages()))
         service_pause('keystone')
+        CONFIGS.write(WSGI_KEYSTONE_CONF)
+        service_reload('apache2')
     configure_https()
 
     update_nrpe_config()
