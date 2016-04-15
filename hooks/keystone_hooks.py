@@ -99,6 +99,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     get_hacluster_config,
     peer_units,
+    https,
 )
 
 from charmhelpers.payload.execd import execd_preinstall
@@ -626,6 +627,7 @@ def admin_relation_changed(relation_id=None):
         'service_username': config('admin-user'),
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
+        'service_protocol': 'https' if https() else 'http',
     }
     relation_data['service_password'] = get_admin_passwd()
     relation_set(relation_id=relation_id, **relation_data)
