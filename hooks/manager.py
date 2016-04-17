@@ -209,7 +209,9 @@ class KeystoneManager3(KeystoneManager):
         self.api.domains.create(domain_name, description=description)
 
     def create_tenant(self, tenant_name, description, domain='default'):
-        self.api.projects.create(tenant_name, domain, description=description)
+        domain_id = self.resolve_domain_id(domain)
+        self.api.projects.create(tenant_name, domain_id,
+                                 description=description)
 
     def delete_tenant(self, tenant_id):
         self.api.projects.delete(tenant_id)

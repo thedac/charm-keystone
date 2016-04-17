@@ -185,7 +185,7 @@ CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 ADMIN_DOMAIN = 'admin_domain'
-DEFAULT_DOMAIN = 'Default'
+DEFAULT_DOMAIN = 'default'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
 WSGI_KEYSTONE_CONF = '/etc/apache2/sites-enabled/wsgi-keystone.conf'
@@ -903,11 +903,12 @@ def ensure_initial_admin(config):
         TODO: Possibly migrate data from one backend to another after it
         changes?
         """
-        create_tenant("admin")
-        create_tenant(config("service-tenant"))
         if get_api_version() > 2:
+            create_or_show_domain(DEFAULT_DOMAIN)
             domain_id = create_or_show_domain(ADMIN_DOMAIN)
             store_admin_domain_id(domain_id)
+        create_tenant("admin")
+        create_tenant(config("service-tenant"))
         # User is managed by ldap backend when using ldap identity
         if not (config('identity-backend') ==
                 'ldap' and config('ldap-readonly')):
