@@ -31,7 +31,6 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     service_pause,
-    service_reload,
 )
 
 from charmhelpers.core.strutils import (
@@ -93,6 +92,7 @@ from keystone_utils import (
     run_in_apache,
     restart_function_map,
     WSGI_KEYSTONE_CONF,
+    restart_pid_check,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -195,7 +195,7 @@ def config_changed_postupgrade():
         apt_install(filter_installed_packages(determine_packages()))
         service_pause('keystone')
         CONFIGS.write(WSGI_KEYSTONE_CONF)
-        service_reload('apache2')
+        restart_pid_check('apache2')
     configure_https()
 
     update_nrpe_config()
