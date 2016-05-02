@@ -273,105 +273,31 @@ class KeystoneRelationTests(CharmTestCase):
         configs.write = MagicMock()
         hooks.pgsql_db_changed()
 
-    @patch('keystone_utils.relation_ids')
-    @patch('keystone_utils.peer_retrieve')
-    @patch('keystone_utils.peer_store')
-    @patch('keystone_utils.log')
+    @patch.object(hooks, 'leader_init_db_if_ready')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'CONFIGS')
-    @patch.object(hooks, 'identity_changed')
-    def test_db_changed_allowed(self, identity_changed, configs,
-                                mock_ensure_ssl_cert_master, mock_log,
-                                mock_peer_store,
-                                mock_peer_retrieve, mock_relation_ids):
-        mock_relation_ids.return_value = ['peer/0']
-        peer_settings = {}
-
-        def fake_peer_store(key, val):
-            peer_settings[key] = val
-
-        def fake_migrate():
-            fake_peer_store('db-initialised', 'True')
-
-        self.migrate_database.side_effect = fake_migrate
-        mock_peer_store.side_effect = fake_peer_store
-        mock_peer_retrieve.side_effect = lambda key: peer_settings.get(key)
-
-        self.is_db_ready.return_value = True
+    def test_db_changed(self, configs,
+                        mock_ensure_ssl_cert_master,
+                        leader_init):
         mock_ensure_ssl_cert_master.return_value = False
-        self.relation_ids.return_value = ['identity-service:0']
-        self.related_units.return_value = ['unit/0']
-
         self._shared_db_test(configs, 'keystone/3')
         self.assertEquals([call('/etc/keystone/keystone.conf')],
                           configs.write.call_args_list)
-        self.migrate_database.assert_called_with()
-        self.assertTrue(self.ensure_initial_admin.called)
-        identity_changed.assert_called_with(
-            relation_id='identity-service:0',
-            remote_unit='unit/0')
+        self.assertTrue(leader_init.called)
 
-    @patch('keystone_utils.relation_ids')
-    @patch('keystone_utils.log')
+    @patch.object(hooks, 'leader_init_db_if_ready')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'CONFIGS')
-    @patch.object(hooks, 'identity_changed')
-    def test_db_changed_not_allowed(self, identity_changed, configs,
-                                    mock_ensure_ssl_cert_master, mock_log,
-                                    mock_relation_ids):
-        mock_relation_ids.return_value = []
-        self.is_db_ready.return_value = False
+    def test_postgresql_db_changed(self, configs,
+                                   mock_ensure_ssl_cert_master,
+                                   leader_init):
         mock_ensure_ssl_cert_master.return_value = False
-        self.relation_ids.return_value = ['identity-service:0']
-        self.related_units.return_value = ['unit/0']
-
-        self._shared_db_test(configs, 'keystone/2')
-        self.assertEquals([call('/etc/keystone/keystone.conf')],
-                          configs.write.call_args_list)
-        self.assertFalse(self.migrate_database.called)
-        self.assertFalse(self.ensure_initial_admin.called)
-        self.assertFalse(identity_changed.called)
-
-    @patch('keystone_utils.relation_ids')
-    @patch('keystone_utils.peer_retrieve')
-    @patch('keystone_utils.peer_store')
-    @patch('keystone_utils.log')
-    @patch('keystone_utils.ensure_ssl_cert_master')
-    @patch.object(hooks, 'CONFIGS')
-    @patch.object(hooks, 'identity_changed')
-    def test_postgresql_db_changed(self, identity_changed, configs,
-                                   mock_ensure_ssl_cert_master, mock_log,
-                                   mock_peer_store, mock_peer_retrieve,
-                                   mock_relation_ids):
-        self.os_release.return_value = 'kilo'
-        mock_relation_ids.return_value = ['peer/0']
-
-        peer_settings = {}
-
-        def fake_peer_store(key, val):
-            peer_settings[key] = val
-
-        def fake_migrate():
-            fake_peer_store('db-initialised', 'True')
-
-        self.migrate_database.side_effect = fake_migrate
-        mock_peer_store.side_effect = fake_peer_store
-        mock_peer_retrieve.side_effect = lambda key: peer_settings.get(key)
-
-        self.is_db_ready.return_value = True
-        mock_ensure_ssl_cert_master.return_value = False
-        self.relation_ids.return_value = ['identity-service:0']
-        self.related_units.return_value = ['unit/0']
-
         self._postgresql_db_test(configs)
         self.assertEquals([call('/etc/keystone/keystone.conf')],
                           configs.write.call_args_list)
-        self.migrate_database.assert_called_with()
-        self.assertTrue(self.ensure_initial_admin.called)
-        identity_changed.assert_called_with(
-            relation_id='identity-service:0',
-            remote_unit='unit/0')
+        self.assertTrue(leader_init.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'git_install_requested')
@@ -409,7 +335,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_ensure_ssl_cert_master,
                                               mock_log, git_requested,
                                               mock_is_db_initialised,
-                                              mock_run_in_apache):
+                                              mock_run_in_apache,
+                                              update):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -431,20 +358,14 @@ class KeystoneRelationTests(CharmTestCase):
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
 
-        self.assertTrue(self.ensure_initial_admin.called)
-        self.log.assert_called_with(
-            'Firing identity_changed hook for all related services.')
-        identity_changed.assert_called_with(
-            relation_id='identity-service:0',
-            remote_unit='unit/0')
-        admin_relation_changed.assert_called_with('identity-service:0')
+        self.assertTrue(update.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
-    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'ensure_pki_cert_paths')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
@@ -467,11 +388,10 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_ensure_permissions,
                                                   mock_ensure_pki_cert_paths,
                                                   mock_ensure_pki_permissions,
-                                                  mock_update_all_id_rel_units,
                                                   ensure_ssl_dirs,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log, git_requested,
-                                                  mock_run_in_apache):
+                                                  mock_run_in_apache, update):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -489,9 +409,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
 
         self.assertFalse(self.migrate_database.called)
-        self.assertFalse(self.ensure_initial_admin.called)
-        self.assertFalse(identity_changed.called)
+        self.assertTrue(update.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'git_install_requested')
@@ -528,7 +448,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_ensure_ssl_cert_master,
                                                    mock_log, git_requested,
                                                    mock_is_db_initialised,
-                                                   mock_run_in_apache):
+                                                   mock_run_in_apache,
+                                                   update):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -552,14 +473,9 @@ class KeystoneRelationTests(CharmTestCase):
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
 
-        self.assertTrue(self.ensure_initial_admin.called)
-        self.log.assert_called_with(
-            'Firing identity_changed hook for all related services.')
-        identity_changed.assert_called_with(
-            relation_id='identity-service:0',
-            remote_unit='unit/0')
-        admin_relation_changed.assert_called_with('identity-service:0')
+        self.assertTrue(update.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'git_install_requested')
@@ -591,7 +507,8 @@ class KeystoneRelationTests(CharmTestCase):
                                         mock_log, config_val_changed,
                                         git_requested,
                                         mock_initialise_pki,
-                                        mock_run_in_apache):
+                                        mock_run_in_apache,
+                                        update):
         mock_run_in_apache.return_value = False
         git_requested.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
@@ -620,6 +537,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.git_install.assert_called_with(projects_yaml)
         self.assertFalse(self.openstack_upgrade_available.called)
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
+        self.assertTrue(update.called)
 
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
@@ -782,16 +700,14 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.leader_elected()
         mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks.CONFIGS, 'write')
-    @patch.object(hooks, 'identity_changed')
-    def test_leader_settings_changed(self, mock_identity_changed,
-                                     mock_write):
+    def test_leader_settings_changed(self, mock_write, update):
         self.relation_ids.return_value = ['identity:1']
         self.related_units.return_value = ['keystone/1']
         hooks.leader_settings_changed()
         mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
-        exp = [call(relation_id='identity:1', remote_unit='keystone/1')]
-        mock_identity_changed.assert_has_calls(exp)
+        self.assertTrue(update.called)
 
     def test_ha_joined(self):
         self.get_hacluster_config.return_value = {
@@ -908,6 +824,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
         self.assertFalse(mock_synchronize_ca.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -917,7 +834,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                   identity_changed,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log,
-                                                  mock_is_db_initialised):
+                                                  mock_is_db_initialised,
+                                                  update):
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
@@ -928,11 +846,7 @@ class KeystoneRelationTests(CharmTestCase):
 
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
-        self.log.assert_called_with(
-            'Firing identity_changed hook for all related services.')
-        identity_changed.assert_called_with(
-            relation_id='identity-service:0',
-            remote_unit='unit/0')
+        self.assertTrue(update.called)
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -965,6 +879,7 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(hooks, 'is_db_ready')
@@ -986,7 +901,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_is_db_initialised,
                                   mock_is_db_ready,
                                   git_requested,
-                                  os_release):
+                                  os_release,
+                                  update):
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_is_elected_leader.return_value = False
@@ -1005,10 +921,138 @@ class KeystoneRelationTests(CharmTestCase):
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
         self.assertTrue(mock_synchronize_ca.called)
-        self.log.assert_called_with(
-            'Firing identity_changed hook for all related services.')
-        self.assertTrue(self.ensure_initial_admin.called)
+        self.assertTrue(update.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'is_db_initialised')
+    def test_leader_init_db_if_ready(self, is_db_initialized,
+                                     update):
+        """ Verify leader initilaizes db """
+        self.is_elected_leader.return_value = True
+        is_db_initialized.return_value = False
+        self.is_db_ready.return_value = True
+        hooks.leader_init_db_if_ready()
+        self.is_db_ready.assert_called_with(use_current_context=False)
+        self.migrate_database.assert_called_with()
+        update.assert_called_with(check_db_ready=False)
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    def test_leader_init_db_not_leader(self, update):
+        """ Verify non-leader does not initilaize db """
+        self.is_elected_leader.return_value = False
+        hooks.leader_init_db_if_ready()
+        self.is_elected_leader.assert_called_with('grp_ks_vips')
+        self.log.assert_called_with("Not leader - skipping db init",
+                                    level='DEBUG')
+        self.assertFalse(self.migrate_database.called)
+        self.assertFalse(update.called)
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'is_db_initialised')
+    def test_leader_init_db_not_initilaized(self, is_db_initialized, update):
+        """ Verify leader does not initilaize db when already initialized """
+        self.is_elected_leader.return_value = True
+        is_db_initialized.return_value = True
+        hooks.leader_init_db_if_ready()
+        self.log.assert_called_with('Database already initialised - skipping '
+                                    'db init', level='DEBUG')
+        self.assertFalse(self.migrate_database.called)
+        self.assertFalse(update.called)
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'is_db_initialised')
+    def test_leader_init_db_not_ready(self, is_db_initialized, update):
+        """ Verify leader does not initilaize db when db not ready """
+        self.is_elected_leader.return_value = True
+        is_db_initialized.return_value = False
+        self.is_db_ready.return_value = False
+        hooks.leader_init_db_if_ready()
+        self.is_db_ready.assert_called_with(use_current_context=False)
+        self.log.assert_called_with('Allowed_units list provided and this '
+                                    'unit not present', level='INFO')
+        self.assertFalse(self.migrate_database.called)
+        self.assertFalse(update.called)
+
+    @patch.object(hooks, 'admin_relation_changed')
+    @patch.object(hooks, 'identity_credentials_changed')
+    @patch.object(hooks, 'identity_changed')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'CONFIGS')
+    def test_update_all_identity_relation_units(self, configs,
+                                                is_db_initialized,
+                                                identity_changed,
+                                                identity_credentials_changed,
+                                                admin_relation_changed):
+        """ Verify all identity relations are updated """
+        is_db_initialized.return_value = True
+        self.relation_ids.return_value = ['identity-relation:0']
+        self.related_units.return_value = ['unit/0']
+        log_calls = [call('Firing identity_changed hook for all related '
+                          'services.'),
+                     call('Firing admin_relation_changed hook for all related '
+                          'services.'),
+                     call('Firing identity_credentials_changed hook for all '
+                          'related services.')]
+        hooks.update_all_identity_relation_units(check_db_ready=False)
+        self.assertTrue(configs.write_all.called)
+        identity_changed.assert_called_with(
+            relation_id='identity-relation:0',
+            remote_unit='unit/0')
+        identity_credentials_changed.assert_called_with(
+            relation_id='identity-relation:0',
+            remote_unit='unit/0')
+        admin_relation_changed.assert_called_with('identity-relation:0')
+        self.log.assert_has_calls(log_calls, any_order=True)
+
+    @patch.object(hooks, 'CONFIGS')
+    def test_update_all_db_not_ready(self, configs):
+        """ Verify update identity relations when DB is not ready """
+        self.is_db_ready.return_value = False
+        hooks.update_all_identity_relation_units(check_db_ready=True)
+        self.assertTrue(configs.write_all.called)
+        self.assertTrue(self.is_db_ready.called)
+        self.log.assert_called_with('Allowed_units list provided and this '
+                                    'unit not present', level='INFO')
+        self.assertFalse(self.relation_ids.called)
+
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'CONFIGS')
+    def test_update_all_db_not_initializd(self, configs, is_db_initialized):
+        """ Verify update identity relations when DB is not initialized """
+        is_db_initialized.return_value = False
+        hooks.update_all_identity_relation_units(check_db_ready=False)
+        self.assertTrue(configs.write_all.called)
+        self.assertFalse(self.is_db_ready.called)
+        self.log.assert_called_with('Database not yet initialised - '
+                                    'deferring identity-relation updates',
+                                    level='INFO')
+        self.assertFalse(self.relation_ids.called)
+
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'CONFIGS')
+    def test_update_all_leader(self, configs, is_db_initialized):
+        """ Verify update identity relations when the leader"""
+        self.is_elected_leader.return_value = True
+        is_db_initialized.return_value = True
+        hooks.update_all_identity_relation_units(check_db_ready=False)
+        self.assertTrue(configs.write_all.called)
+        self.assertTrue(self.ensure_initial_admin.called)
+        # Still updates relations
+        self.assertTrue(self.relation_ids.called)
+
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'CONFIGS')
+    def test_update_all_not_leader(self, configs, is_db_initialized):
+        """ Verify update identity relations when not the leader"""
+        self.is_elected_leader.return_value = False
+        is_db_initialized.return_value = True
+        hooks.update_all_identity_relation_units(check_db_ready=False)
+        self.assertTrue(configs.write_all.called)
+        self.assertFalse(self.ensure_initial_admin.called)
+        # Still updates relations
+        self.assertTrue(self.relation_ids.called)
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch('keystone_utils.log')
@@ -1021,7 +1065,7 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_ensure_ssl_cert_master,
                                       mock_relation_ids,
                                       mock_log, git_requested,
-                                      os_release):
+                                      os_release, update):
         mock_relation_ids.return_value = []
         mock_ensure_ssl_cert_master.return_value = False
         # Ensure always returns diff
@@ -1037,4 +1081,4 @@ class KeystoneRelationTests(CharmTestCase):
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
         self.assertTrue(self.log.called)
-        self.assertFalse(self.ensure_initial_admin.called)
+        self.assertFalse(update.called)
