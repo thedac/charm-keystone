@@ -966,7 +966,7 @@ class TestKeystoneUtils(CharmTestCase):
                                                    domain=None,
                                                    new_roles=[],
                                                    grants=['Admin'],
-                                                   project='services')
+                                                   tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
@@ -1016,7 +1016,7 @@ class TestKeystoneUtils(CharmTestCase):
                                                    domain='Non-Default',
                                                    new_roles=[],
                                                    grants=['Admin'],
-                                                   project='services')
+                                                   tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
@@ -1071,7 +1071,7 @@ class TestKeystoneUtils(CharmTestCase):
                                                    domain=None,
                                                    new_roles=['New', 'Member'],
                                                    grants=['New', 'Member'],
-                                                   project='myproject')
+                                                   tenant='myproject')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
@@ -1127,6 +1127,6 @@ class TestKeystoneUtils(CharmTestCase):
                                                    domain=None,
                                                    new_roles=[],
                                                    grants=['Admin'],
-                                                   project='services')
+                                                   tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)

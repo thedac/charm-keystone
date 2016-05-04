@@ -1814,7 +1814,7 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
     credentials_password = create_user_credentials(
         credentials_username,
         get_service_password(credentials_username),
-        project=credentials_project,
+        tenant=credentials_project,
         new_roles=get_requested_roles(settings),
         grants=credentials_grants,
         domain=domain)
