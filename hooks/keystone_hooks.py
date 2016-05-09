@@ -322,6 +322,7 @@ def leader_init_db_if_ready(use_current_context=False):
 
     if is_db_initialised():
         log("Database already initialised - skipping db init", level=DEBUG)
+        update_all_identity_relation_units(check_db_ready=False)
         return
 
     # Bugs 1353135 & 1187508. Dbs can appear to be ready before the

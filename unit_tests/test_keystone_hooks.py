@@ -957,7 +957,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with('Database already initialised - skipping '
                                     'db init', level='DEBUG')
         self.assertFalse(self.migrate_database.called)
-        self.assertFalse(update.called)
+        self.assertTrue(update.called)
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
