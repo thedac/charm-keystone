@@ -177,6 +177,12 @@ options:
     default: True
     description: Ldap identity server backend readonly to keystone.
   # HA configuration settings
+  dns-ha:
+    type: boolean
+    default: False
+    description: |
+        Use DNS HA with MAAS 2.0. Note if this is set do not set vip
+        settings below.
   vip:
     type: string
     default:
@@ -278,6 +284,30 @@ options:
       create a public endpoint for keystone as:
       .
       https://keystone.example.com:5000/v2.0
+  os-internal-hostname:
+    type: string
+    default:
+    description: |
+      The hostname or address of the internal endpoints created for keystone
+      in the keystone identity provider (itself).
+      .
+      This value will be used for internal endpoints. For example, an
+      os-internal-hostname set to 'keystone.internal.example.com' with ssl enabled will
+      create a internal endpoint for keystone as:
+      .
+      https://keystone.internal.example.com:5000/v2.0
+  os-admin-hostname:
+    type: string
+    default:
+    description: |
+      The hostname or address of the admin endpoints created for keystone
+      in the keystone identity provider (itself).
+      .
+      This value will be used for admin endpoints. For example, an
+      os-admin-hostname set to 'keystone.admin.example.com' with ssl enabled will
+      create a admin endpoint for keystone as:
+      .
+      https://keystone.admin.example.com:5000/v2.0
   prefer-ipv6:
     type: boolean
     default: False
