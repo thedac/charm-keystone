@@ -314,6 +314,10 @@ valid_services = {
         "type": "alarming",
         "desc": "Aodh Alarming Service",
     },
+    "barbican": {
+        "type": "key-manager",
+        "desc": "Barbican secrets management service"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
