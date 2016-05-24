@@ -48,6 +48,7 @@ TO_PATCH = [
     'unit_get',
     'peer_echo',
     'network_get_primary_address',
+    'open_port',
     # charmhelpers.core.host
     'apt_install',
     'apt_update',
@@ -357,6 +358,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.save_script_rc.assert_called_with()
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
+        self.open_port.assert_called_with(5000)
 
         self.assertTrue(update.called)
 

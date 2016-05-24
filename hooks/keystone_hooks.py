@@ -26,6 +26,7 @@ from charmhelpers.core.hookenv import (
     unit_get,
     status_set,
     network_get_primary_address,
+    open_port,
 )
 
 from charmhelpers.core.host import (
@@ -199,6 +200,7 @@ def config_changed_postupgrade():
         CONFIGS.write(WSGI_KEYSTONE_CONF)
         restart_pid_check('apache2')
     configure_https()
+    open_port(config('service-port'))
 
     update_nrpe_config()
     CONFIGS.write_all()
