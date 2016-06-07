@@ -128,19 +128,28 @@ class TestKeystoneUtils(CharmTestCase):
             ex.remove(p)
         self.assertEquals(set(ex), set(result))
 
+    @patch('os.path.exists')
+    @patch.object(utils, 'run_in_apache')
     @patch.object(utils, 'determine_packages')
     @patch.object(utils, 'migrate_database')
     def test_openstack_upgrade_leader(
-            self, migrate_database, determine_packages):
+            self, migrate_database, determine_packages,
+            run_in_apache, os_path_exists):
         configs = MagicMock()
-        self.test_config.set('openstack-origin', 'precise')
+        self.test_config.set('openstack-origin', 'cloud:xenial-newton')
         determine_packages.return_value = []
         self.is_elected_leader.return_value = True
+        os_path_exists.return_value = True
+        run_in_apache.return_value = True
 
         utils.do_openstack_upgrade(configs)
 
-        self.get_os_codename_install_source.assert_called_with('precise')
-        self.configure_installation_source.assert_called_with('precise')
+        self.get_os_codename_install_source.assert_called_with(
+            'cloud:xenial-newton'
+        )
+        self.configure_installation_source.assert_called_with(
+            'cloud:xenial-newton'
+        )
         self.assertTrue(self.apt_update.called)
 
         dpkg_opts = [
@@ -159,6 +168,12 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(configs.set_release.called)
         self.assertTrue(configs.write_all.called)
         self.assertTrue(migrate_database.called)
+        os_path_exists.assert_called_with(
+            utils.PACKAGE_KEYSTONE_CONF
+        )
+        self.subprocess.check_call.assert_called_with(
+            ['a2dissite', 'keystone']
+        )
 
     def test_migrate_database(self):
         utils.migrate_database()

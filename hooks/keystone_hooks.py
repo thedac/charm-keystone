@@ -95,6 +95,7 @@ from keystone_utils import (
     restart_function_map,
     WSGI_KEYSTONE_CONF,
     restart_pid_check,
+    PACKAGE_KEYSTONE_CONF,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -140,6 +141,12 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
     if run_in_apache():
+        # NOTE: ensure that packaging provided
+        #       apache configuration is disabled
+        #       as it will conflict with the charm
+        #       provided version
+        if os.path.exists(PACKAGE_KEYSTONE_CONF):
+            check_call(['a2dissite', 'keystone'])
         service_pause('keystone')
 
     status_set('maintenance', 'Git install')

@@ -189,6 +189,7 @@ DEFAULT_DOMAIN = 'default'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
 WSGI_KEYSTONE_CONF = '/etc/apache2/sites-enabled/wsgi-keystone.conf'
+PACKAGE_KEYSTONE_CONF = '/etc/apache2/sites-enabled/keystone.conf'
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -484,6 +485,14 @@ def do_openstack_upgrade(configs):
     # set CONFIGS to load templates from new release and regenerate config
     configs.set_release(openstack_release=new_os_rel)
     configs.write_all()
+
+    if run_in_apache():
+        # NOTE: ensure that packaging provided
+        #       apache configuration is disabled
+        #       as it will conflict with the charm
+        #       provided version
+        if os.path.exists(PACKAGE_KEYSTONE_CONF):
+            subprocess.check_call(['a2dissite', 'keystone'])
 
     if is_elected_leader(CLUSTER_RES):
         if is_db_ready():

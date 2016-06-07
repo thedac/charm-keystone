@@ -117,6 +117,28 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
+    def test_install_hook_apache2(self, ensure_user,
+                                  git_requested, os_release):
+        git_requested.return_value = False
+        repo = 'cloud:xenial-newton'
+        self.test_config.set('openstack-origin', repo)
+        self.os.path.exists.return_value = True
+        hooks.install()
+        self.assertTrue(self.execd_preinstall.called)
+        self.configure_installation_source.assert_called_with(repo)
+        ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
+        self.assertTrue(self.apt_update.called)
+        self.apt_install.assert_called_with(
+            ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
+             'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
+             'python-six', 'unison', 'uuid'], fatal=True)
+        self.git_install.assert_called_with(None)
+        self.os.path.exists.assert_called_with(utils.PACKAGE_KEYSTONE_CONF)
+        self.check_call.assert_called_with(['a2dissite', 'keystone'])
+
+    @patch.object(utils, 'os_release')
+    @patch.object(utils, 'git_install_requested')
+    @patch.object(unison, 'ensure_user')
     def test_install_hook_git(self, ensure_user, git_requested, os_release):
         git_requested.return_value = True
         repo = 'cloud:trusty-juno'
