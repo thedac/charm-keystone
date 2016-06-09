@@ -318,6 +318,10 @@ valid_services = {
         "type": "key-manager",
         "desc": "Barbican secrets management service"
     },
+    "congress": {
+        "type": "policy",
+        "desc": "Congress policy management service"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
