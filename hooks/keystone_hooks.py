@@ -51,6 +51,7 @@ from charmhelpers.contrib.openstack.utils import (
     sync_db_with_multi_ipv6_addresses,
     os_release,
     pausable_restart_on_change as restart_on_change,
+    is_unit_paused_set,
 )
 
 from keystone_utils import (
@@ -205,7 +206,8 @@ def config_changed_postupgrade():
         apt_install(filter_installed_packages(determine_packages()))
         service_pause('keystone')
         CONFIGS.write(WSGI_KEYSTONE_CONF)
-        restart_pid_check('apache2')
+        if not is_unit_paused_set():
+            restart_pid_check('apache2')
     configure_https()
     open_port(config('service-port'))
 
