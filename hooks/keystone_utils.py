@@ -51,7 +51,6 @@ from charmhelpers.contrib.openstack.utils import (
     git_pip_venv_dir,
     os_release,
     save_script_rc as _save_script_rc,
-    set_os_workload_status,
     pause_unit,
     resume_unit,
     is_unit_paused_set,
@@ -86,7 +85,6 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
-    status_get,
 )
 
 from charmhelpers.fetch import (
@@ -2143,7 +2141,27 @@ def git_post_install(projects_yaml):
         service_restart(keystone_service())
 
 
+def get_optional_interfaces():
+    """Return the optional interfaces that should be checked if the relavent
+    relations have appeared.
+    :returns: {general_interface: [specific_int1, specific_int2, ...], ...}
+    """
+    optional_interfaces = {}
+    if relation_ids('ha'):
+        optional_interfaces = {'ha': ['cluster']}
+    return optional_interfaces
+
+
 def check_optional_relations(configs):
+    """Check that if we have a relation_id for high availability that we can
+    get the hacluster config.  If we can't then we are blocked.  This function
+    is called from assess_status/set_os_workload_status as the charm_func and
+    needs to return either "unknown", "" if there is no problem or the status,
+    message if there is a problem.
+
+    :param configs: an OSConfigRender() instance.
+    :return 2-tuple: (string, string) = (status, message)
+    """
     if relation_ids('ha'):
         try:
             get_hacluster_config()
@@ -2151,11 +2169,9 @@ def check_optional_relations(configs):
             return ('blocked',
                     'hacluster missing configuration: '
                     'vip, vip_iface, vip_cidr')
-        required_interfaces = {'ha': ['cluster']}
-        set_os_workload_status(configs, required_interfaces)
-        return status_get()
-    else:
-        return 'unknown', 'No optional relations'
+    # return 'unknown' as the lowest priority to not clobber an existing
+    # status.
+    return 'unknown', ''
 
 
 def assess_status(configs):
@@ -2182,12 +2198,20 @@ def assess_status_func(configs):
     Used directly by assess_status() and also for pausing and resuming
     the unit.
 
+    NOTE: REQUIRED_INTERFACES is augmented with the optional interfaces
+    depending on the current config before being passed to the
+    make_assess_status_func() function.
+
     @param configs: a templating.OSConfigRenderer() object
     @return f() -> None : a function that assesses the unit's workload status
     """
+    required_interfaces = REQUIRED_INTERFACES.copy()
+    required_interfaces.update(get_optional_interfaces())
     return make_assess_status_func(
-        configs, REQUIRED_INTERFACES, charm_func=check_optional_relations,
-        services=services(), ports=determine_ports())
+        configs, required_interfaces,
+        charm_func=check_optional_relations,
+        services=services(),
+        ports=determine_ports())
 
 
 def get_admin_domain_id():

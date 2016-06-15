@@ -811,6 +811,7 @@ class TestKeystoneUtils(CharmTestCase):
             asf.assert_called_once_with('test-config')
             callee.assert_called_once_with()
 
+    @patch.object(utils, 'get_optional_interfaces')
     @patch.object(utils, 'REQUIRED_INTERFACES')
     @patch.object(utils, 'check_optional_relations')
     @patch.object(utils, 'services')
@@ -821,12 +822,16 @@ class TestKeystoneUtils(CharmTestCase):
                                 determine_ports,
                                 services,
                                 check_optional_relations,
-                                REQUIRED_INTERFACES):
+                                REQUIRED_INTERFACES,
+                                get_optional_interfaces):
         services.return_value = 's1'
         determine_ports.return_value = 'p1'
+        REQUIRED_INTERFACES.copy.return_value = {'int': ['test 1']}
+        get_optional_interfaces.return_value = {'opt': ['test 2']}
         utils.assess_status_func('test-config')
         make_assess_status_func.assert_called_once_with(
-            'test-config', REQUIRED_INTERFACES,
+            'test-config',
+            {'int': ['test 1'], 'opt': ['test 2']},
             charm_func=check_optional_relations, services='s1', ports='p1')
 
     def test_pause_unit_helper(self):
