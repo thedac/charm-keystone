@@ -59,12 +59,12 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
     get_os_codename_install_source,
-    git_install_requested,
     git_clone_and_install,
     git_default_repos,
+    git_install_requested,
+    git_pip_venv_dir,
     git_src_dir,
     git_yaml_value,
-    git_pip_venv_dir,
     os_release,
     save_script_rc as _save_script_rc,
     pause_unit,
@@ -2071,6 +2071,35 @@ def is_db_ready(use_current_context=False, db_rel=None):
     return not rel_has_units
 
 
+def determine_usr_bin():
+    """Return the /usr/bin path for Apache2 vhost config.
+
+    The /usr/bin path will be located in the virtualenv if the charm
+    is configured to deploy keystone from source.
+    """
+    if git_install_requested():
+        projects_yaml = config('openstack-origin-git')
+        projects_yaml = git_default_repos(projects_yaml)
+        return os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
+    else:
+        return '/usr/bin'
+
+
+def determine_python_path():
+    """Return the python-path for Apache2 vhost config.
+
+    Returns None unless the charm is configured to deploy keystone from source,
+    in which case the path of the virtualenv's site-packages is returned.
+    """
+    if git_install_requested():
+        projects_yaml = config('openstack-origin-git')
+        projects_yaml = git_default_repos(projects_yaml)
+        return os.path.join(git_pip_venv_dir(projects_yaml),
+                            'lib/python2.7/site-packages')
+    else:
+        return None
+
+
 def git_install(projects_yaml):
     """Perform setup, and install git repos specified in yaml parameter."""
     if git_install_requested():
@@ -2092,7 +2121,8 @@ def git_pre_install():
         '/var/log/keystone/keystone.log',
     ]
 
-    adduser('keystone', shell='/bin/bash', system_user=True)
+    adduser('keystone', shell='/bin/bash', system_user=True,
+            home_dir='/var/lib/keystone')
     add_group('keystone', system_group=True)
     add_user_to_group('keystone', 'keystone')
 
@@ -2138,22 +2168,24 @@ def git_post_install(projects_yaml):
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
     bin_dir = os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
-    keystone_context = {
-        'service_description': 'Keystone API server',
-        'service_name': 'Keystone',
-        'user_name': 'keystone',
-        'start_dir': '/var/lib/keystone',
-        'process_name': 'keystone',
-        'executable_name': os.path.join(bin_dir, 'keystone-all'),
-        'config_files': ['/etc/keystone/keystone.conf'],
-        'log_file': '/var/log/keystone/keystone.log',
-    }
+    # The charm runs the keystone API under apache2 for openstack liberty
+    # onward.  Prior to liberty upstart is used.
+    if os_release('keystone') < 'liberty':
+        keystone_context = {
+            'service_description': 'Keystone API server',
+            'service_name': 'Keystone',
+            'user_name': 'keystone',
+            'start_dir': '/var/lib/keystone',
+            'process_name': 'keystone',
+            'executable_name': os.path.join(bin_dir, 'keystone-all'),
+            'config_files': ['/etc/keystone/keystone.conf'],
+            'log_file': '/var/log/keystone/keystone.log',
+        }
 
-    # NOTE(coreycb): Needs systemd support
-    templates_dir = 'hooks/charmhelpers/contrib/openstack/templates'
-    templates_dir = os.path.join(charm_dir(), templates_dir)
-    render('git.upstart', '/etc/init/keystone.conf', keystone_context,
-           perms=0o644, templates_dir=templates_dir)
+        templates_dir = 'hooks/charmhelpers/contrib/openstack/templates'
+        templates_dir = os.path.join(charm_dir(), templates_dir)
+        render('git.upstart', '/etc/init/keystone.conf', keystone_context,
+               perms=0o644, templates_dir=templates_dir)
 
     # Don't restart if the unit is supposed to be paused.
     if not is_unit_paused_set():

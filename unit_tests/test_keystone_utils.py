@@ -35,18 +35,24 @@ TO_PATCH = [
     'get_requested_roles',
     'get_service_password',
     'get_os_codename_install_source',
+    'git_clone_and_install',
+    'git_pip_venv_dir',
+    'git_src_dir',
     'grant_role',
     'configure_installation_source',
     'is_elected_leader',
     'is_ssl_cert_master',
     'https',
+    'lsb_release',
     'peer_store_and_set',
+    'service_restart',
     'service_stop',
     'service_start',
     'relation_get',
     'relation_set',
     'relation_ids',
     'relation_id',
+    'render',
     'local_unit',
     'related_units',
     'https',
@@ -709,17 +715,15 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertFalse(self.relation_set.called)
 
     @patch.object(utils, 'git_install_requested')
-    @patch.object(utils, 'git_clone_and_install')
     @patch.object(utils, 'git_post_install')
     @patch.object(utils, 'git_pre_install')
-    def test_git_install(self, git_pre, git_post, git_clone_and_install,
-                         git_requested):
+    def test_git_install(self, git_requested, git_pre, git_post):
         projects_yaml = openstack_origin_git
         git_requested.return_value = True
         utils.git_install(projects_yaml)
         self.assertTrue(git_pre.called)
-        git_clone_and_install.assert_called_with(openstack_origin_git,
-                                                 core_project='keystone')
+        self.git_clone_and_install.assert_called_with(openstack_origin_git,
+                                                      core_project='keystone')
         self.assertTrue(git_post.called)
 
     @patch.object(utils, 'mkdir')
@@ -731,7 +735,8 @@ class TestKeystoneUtils(CharmTestCase):
                              write_file, mkdir):
         utils.git_pre_install()
         adduser.assert_called_with('keystone', shell='/bin/bash',
-                                   system_user=True)
+                                   system_user=True,
+                                   home_dir='/var/lib/keystone')
         add_group.assert_called_with('keystone', system_group=True)
         add_user_to_group.assert_called_with('keystone', 'keystone')
         expected = [
@@ -747,10 +752,6 @@ class TestKeystoneUtils(CharmTestCase):
                                       '', owner='keystone', group='keystone',
                                       perms=0600)
 
-    @patch.object(utils, 'git_src_dir')
-    @patch.object(utils, 'service_restart')
-    @patch.object(utils, 'render')
-    @patch.object(utils, 'git_pip_venv_dir')
     @patch('os.path.join')
     @patch('os.path.exists')
     @patch('os.symlink')
@@ -758,11 +759,11 @@ class TestKeystoneUtils(CharmTestCase):
     @patch('shutil.rmtree')
     @patch('subprocess.check_call')
     def test_git_post_install(self, check_call, rmtree, copytree, symlink,
-                              exists, join, venv, render, service_restart,
-                              git_src_dir):
+                              exists, join):
         projects_yaml = openstack_origin_git
         join.return_value = 'joined-string'
-        venv.return_value = '/mnt/openstack-git/venv'
+        self.git_pip_venv_dir.return_value = '/mnt/openstack-git/venv'
+        self.lsb_release.return_value = {'DISTRIB_RELEASE': '15.04'}
         utils.git_post_install(projects_yaml)
         expected = [
             call('joined-string', '/etc/keystone'),
@@ -788,8 +789,8 @@ class TestKeystoneUtils(CharmTestCase):
             call('git.upstart', '/etc/init/keystone.conf',
                  keystone_context, perms=0o644, templates_dir='joined-string'),
         ]
-        self.assertEquals(render.call_args_list, expected)
-        service_restart.assert_called_with('keystone')
+        self.assertEquals(self.render.call_args_list, expected)
+        self.service_restart.assert_called_with('keystone')
 
     @patch.object(utils, 'get_manager')
     def test_is_service_present(self, KeystoneManager):

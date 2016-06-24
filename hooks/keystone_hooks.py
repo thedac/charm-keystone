@@ -164,10 +164,12 @@ def install():
         # NOTE: ensure that packaging provided
         #       apache configuration is disabled
         #       as it will conflict with the charm
-        #       provided version
+        #       provided version. when deployed from
+        #       source, init scripts aren't installed.
         if os.path.exists(PACKAGE_KEYSTONE_CONF):
             check_call(['a2dissite', 'keystone'])
-        service_pause('keystone')
+        if not git_install_requested():
+            service_pause('keystone')
 
     status_set('maintenance', 'Git install')
     git_install(config('openstack-origin-git'))
@@ -223,7 +225,9 @@ def config_changed_postupgrade():
         # immediatly as charm querys its local keystone before restart
         # decorator can fire
         apt_install(filter_installed_packages(determine_packages()))
-        service_pause('keystone')
+        # when deployed from source, init scripts aren't installed
+        if not git_install_requested():
+            service_pause('keystone')
         CONFIGS.write(WSGI_KEYSTONE_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')

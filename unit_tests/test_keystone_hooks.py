@@ -68,6 +68,7 @@ TO_PATCH = [
     'apt_update',
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
+    'git_install_requested',
     # charmhelpers.contrib.openstack.ip
     'resolve_address',
     # charmhelpers.contrib.openstack.ha.utils
