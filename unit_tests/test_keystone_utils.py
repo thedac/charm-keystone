@@ -183,11 +183,16 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_with('keystone')
 
+    @patch.object(utils, 'get_admin_domain_id')
+    @patch.object(utils, 'get_api_version')
     @patch.object(utils, 'get_manager')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'b64encode')
     def test_add_service_to_keystone_clustered_https_none_values(
-            self, b64encode, _resolve_address, _get_manager):
+            self, b64encode, _resolve_address, _get_manager,
+            _get_api_version, _get_admin_domain_id):
+        _get_api_version.return_value = 2
+        _get_admin_domain_id.return_value = None
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         _resolve_address.return_value = '10.10.10.10'
@@ -219,10 +224,14 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_port': 81,
                          'https_keystone': 'True',
                          'ca_cert': 'certificate',
-                         'region': 'RegionOne'}
+                         'region': 'RegionOne',
+                         'api_version': 2,
+                         'admin_domain_id': None}
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'get_api_version')
+    @patch.object(utils, 'get_admin_domain_id')
     @patch.object(utils, 'create_user')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'ensure_valid_service')
@@ -230,7 +239,10 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
-            _resolve_address, create_user):
+            _resolve_address, create_user, get_admin_domain_id,
+            get_api_version):
+        get_admin_domain_id.return_value = None
+        get_api_version.return_value = 2
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -272,9 +284,10 @@ class TestKeystoneUtils(CharmTestCase):
         self.create_role.assert_called_with('role1', 'keystone', 'tenant',
                                             None)
 
-        relation_data = {'auth_host': '10.0.0.3', 'service_host': '10.0.0.3',
-                         'admin_token': 'token', 'service_port': 81,
-                         'auth_port': 80, 'service_username': 'keystone',
+        relation_data = {'admin_domain_id': None, 'auth_host': '10.0.0.3',
+                         'service_host': '10.0.0.3', 'admin_token': 'token',
+                         'service_port': 81, 'auth_port': 80,
+                         'service_username': 'keystone',
                          'service_password': 'password',
                          'service_tenant': 'tenant',
                          'https_keystone': '__null__',

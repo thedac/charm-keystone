@@ -1643,7 +1643,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
-
+            relation_data["api_version"] = get_api_version()
+            relation_data["admin_domain_id"] = get_admin_domain_id()
             # Get and pass CA bundle settings
             relation_data.update(get_ssl_ca_settings())
 
@@ -1769,6 +1770,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "auth_protocol": protocol,
         "service_protocol": protocol,
         "api_version": get_api_version(),
+        "admin_domain_id": get_admin_domain_id(),
     }
 
     # generate or get a new cert/key for service if set to manage certs.
