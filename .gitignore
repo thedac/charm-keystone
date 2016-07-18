@@ -9,3 +9,5 @@ joined-string
 .unit-state.db
 trusty/**
 xenial/
+func-results.json
+.local

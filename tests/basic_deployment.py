@@ -230,9 +230,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
-        self.mysql_sentry = self.d.sentry.unit['mysql/0']
-        self.keystone_sentry = self.d.sentry.unit['keystone/0']
-        self.cinder_sentry = self.d.sentry.unit['cinder/0']
+        self.mysql_sentry = self.d.sentry['mysql'][0]
+        self.keystone_sentry = self.d.sentry['keystone'][0]
+        self.cinder_sentry = self.d.sentry['cinder'][0]
         u.log.debug('openstack release val: {}'.format(
             self._get_openstack_release()))
         u.log.debug('openstack release str: {}'.format(
@@ -663,14 +663,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_901_pause_resume(self):
         """Test pause and resume actions."""
-        unit_name = "keystone/0"
-        unit = self.d.sentry.unit[unit_name]
         self._assert_services(should_run=True)
-        action_id = u.run_action(unit, "pause")
+        action_id = u.run_action(self.keystone_sentry, "pause")
         assert u.wait_on_action(action_id), "Pause action failed."
 
         self._assert_services(should_run=False)
 
-        action_id = u.run_action(unit, "resume")
+        action_id = u.run_action(self.keystone_sentry, "resume")
         assert u.wait_on_action(action_id), "Resume action failed"
         self._assert_services(should_run=True)
