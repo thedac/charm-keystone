@@ -66,6 +66,7 @@ TO_PATCH = [
     'subprocess',
     'time',
     'pwgen',
+    'os_application_version_set',
 ]
 
 openstack_origin_git = \
@@ -838,6 +839,9 @@ class TestKeystoneUtils(CharmTestCase):
             utils.assess_status('test-config')
             asf.assert_called_once_with('test-config')
             callee.assert_called_once_with()
+            self.os_application_version_set.assert_called_with(
+                utils.VERSION_PACKAGE
+            )
 
     @patch.object(utils, 'get_optional_interfaces')
     @patch.object(utils, 'REQUIRED_INTERFACES')
