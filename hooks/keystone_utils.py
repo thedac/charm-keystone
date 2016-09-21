@@ -345,8 +345,12 @@ valid_services = {
         "desc": "Database as a service"
     },
     "manila": {
-        "type": "file-share",
-        "desc": "Manila file share service"
+        "type": "share",
+        "desc": "Shared Filesystem service"
+    },
+    "manilav2": {
+        "type": "sharev2",
+        "desc": "Shared Filesystem service v2"
     },
 }
 
