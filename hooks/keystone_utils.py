@@ -344,6 +344,10 @@ valid_services = {
         "type": "database",
         "desc": "Database as a service"
     },
+    "manila": {
+        "type": "file-share",
+        "desc": "Manila file share service"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the
