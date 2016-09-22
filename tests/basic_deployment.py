@@ -54,9 +54,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
 
         u.log.info('Waiting on extended status checks...')
-        self.exclude_services = ['mysql']
+        self.exclude_services = []
         self._auto_wait_for_status(exclude_services=self.exclude_services)
 
+        self.d.sentry.wait()
         self._initialize_tests()
 
     def _assert_services(self, should_run):
@@ -75,25 +76,30 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
            compatible with the local charm (e.g. stable or next).
            """
         this_service = {'name': 'keystone'}
-        other_services = [{'name': 'mysql'},
-                          {'name': 'rabbitmq-server'},  # satisfy wrkload stat
-                          {'name': 'cinder'}]
+        other_services = [
+            {'name': 'percona-cluster', 'constraints': {'mem': '3072M'}},
+            {'name': 'rabbitmq-server'},  # satisfy wrkload stat
+            {'name': 'cinder'},
+        ]
         super(KeystoneBasicDeployment, self)._add_services(this_service,
                                                            other_services)
 
     def _add_relations(self):
         """Add all of the relations for the services."""
-        relations = {'keystone:shared-db': 'mysql:shared-db',
-                     'cinder:shared-db': 'mysql:shared-db',
+        relations = {'keystone:shared-db': 'percona-cluster:shared-db',
+                     'cinder:shared-db': 'percona-cluster:shared-db',
                      'cinder:amqp': 'rabbitmq-server:amqp',
                      'cinder:identity-service': 'keystone:identity-service'}
         super(KeystoneBasicDeployment, self)._add_relations(relations)
 
     def _configure_services(self):
         """Configure all of the services."""
-        keystone_config = {'admin-password': 'openstack',
-                           'admin-token': 'ubuntutesting',
-                           'preferred-api-version': self.keystone_api_version}
+        keystone_config = {
+            'admin-password': 'openstack',
+            'admin-token': 'ubuntutesting',
+            'preferred-api-version': self.keystone_api_version,
+        }
+
         if self.git:
             amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
 
@@ -121,12 +127,19 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             keystone_config['openstack-origin-git'] = \
                 yaml.dump(openstack_origin_git)
 
-        mysql_config = {'dataset-size': '50%'}
-        cinder_config = {'block-device': 'None'}
+        pxc_config = {
+            'dataset-size': '25%',
+            'max-connections': 1000,
+            'root-password': 'ChangeMe123',
+            'sst-password': 'ChangeMe123',
+        }
+        cinder_config = {
+            'block-device': 'None',
+        }
         configs = {
             'keystone': keystone_config,
-            'mysql': mysql_config,
-            'cinder': cinder_config
+            'percona-cluster': pxc_config,
+            'cinder': cinder_config,
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
@@ -230,7 +243,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
-        self.mysql_sentry = self.d.sentry['mysql'][0]
+        self.pxc_sentry = self.d.sentry['percona-cluster'][0]
         self.keystone_sentry = self.d.sentry['keystone'][0]
         self.cinder_sentry = self.d.sentry['cinder'][0]
         u.log.debug('openstack release val: {}'.format(
@@ -239,7 +252,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             self._get_openstack_release_string()))
         self.keystone_ip = self.keystone_sentry.relation(
             'shared-db',
-            'mysql:shared-db')['private-address']
+            'percona-cluster:shared-db')['private-address']
         self.set_api_version(2)
         # Authenticate keystone admin
         self.keystone_v2 = self.get_keystone_client(api_version=2)
@@ -250,7 +263,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the expected services are running on the corresponding
            service units."""
         services = {
-            self.mysql_sentry: ['mysql'],
             self.keystone_sentry: ['keystone'],
             self.cinder_sentry: ['cinder-api',
                                  'cinder-scheduler',
@@ -471,7 +483,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the keystone shared-db relation data"""
         u.log.debug('Checking keystone to mysql db relation data...')
         unit = self.keystone_sentry
-        relation = ['shared-db', 'mysql:shared-db']
+        relation = ['shared-db', 'percona-cluster:shared-db']
         expected = {
             'username': 'keystone',
             'private-address': u.valid_ip,
@@ -486,7 +498,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_201_mysql_keystone_shared_db_relation(self):
         """Verify the mysql shared-db relation data"""
         u.log.debug('Checking mysql to keystone db relation data...')
-        unit = self.mysql_sentry
+        unit = self.pxc_sentry
         relation = ['shared-db', 'keystone:shared-db']
         expected_data = {
             'private-address': u.valid_ip,
@@ -553,8 +565,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         conf = '/etc/keystone/keystone.conf'
         ks_ci_rel = unit.relation('identity-service',
                                   'cinder:identity-service')
-        my_ks_rel = self.mysql_sentry.relation('shared-db',
-                                               'keystone:shared-db')
+        my_ks_rel = self.pxc_sentry.relation('shared-db',
+                                             'keystone:shared-db')
         db_uri = "mysql://{}:{}@{}/{}".format('keystone',
                                               my_ks_rel['password'],
                                               my_ks_rel['db_host'],

@@ -14,12 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Amulet tests on a basic keystone deployment on precise-icehouse."""
+"""Amulet tests on a basic keystone deployment on yakkety-newton."""
 
 from basic_deployment import KeystoneBasicDeployment
 
 if __name__ == '__main__':
-    deployment = KeystoneBasicDeployment(series='precise',
-                                         openstack='cloud:precise-icehouse',
-                                         source='cloud:precise-updates/icehouse')
+    deployment = KeystoneBasicDeployment(series='yakkety')
     deployment.run_tests()
