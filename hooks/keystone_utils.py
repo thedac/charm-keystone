@@ -183,6 +183,7 @@ KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
 STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
 STORED_TOKEN = "/var/lib/keystone/keystone.token"
 STORED_ADMIN_DOMAIN_ID = "/var/lib/keystone/keystone.admin_domain_id"
+STORED_DEFAULT_DOMAIN_ID = "/var/lib/keystone/keystone.default_domain_id"
 SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
 
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
@@ -877,14 +878,21 @@ def grant_role(user, role, tenant=None, domain=None, user_domain=None):
             (user, role, tenant), level=DEBUG)
 
 
+def store_data(backing_file, data):
+    with open(backing_file, 'w+') as fd:
+        fd.writelines("%s\n" % data)
+
+
 def store_admin_passwd(passwd):
-    with open(STORED_PASSWD, 'w+') as fd:
-        fd.writelines("%s\n" % passwd)
+    store_data(STORED_PASSWD, passwd)
 
 
 def store_admin_domain_id(domain_id):
-    with open(STORED_ADMIN_DOMAIN_ID, 'w+') as fd:
-        fd.writelines("%s\n" % domain_id)
+    store_data(STORED_ADMIN_DOMAIN_ID, domain_id)
+
+
+def store_default_domain_id(domain_id):
+    store_data(STORED_DEFAULT_DOMAIN_ID, domain_id)
 
 
 def get_admin_passwd():
@@ -950,9 +958,10 @@ def ensure_initial_admin(config):
         changes?
         """
         if get_api_version() > 2:
-            create_or_show_domain(DEFAULT_DOMAIN)
-            domain_id = create_or_show_domain(ADMIN_DOMAIN)
-            store_admin_domain_id(domain_id)
+            default_domain_id = create_or_show_domain(DEFAULT_DOMAIN)
+            store_default_domain_id(default_domain_id)
+            admin_domain_id = create_or_show_domain(ADMIN_DOMAIN)
+            store_admin_domain_id(admin_domain_id)
         create_tenant("admin")
         create_tenant(config("service-tenant"))
         # User is managed by ldap backend when using ldap identity
@@ -2281,14 +2290,22 @@ def assess_status_func(configs):
         ports=determine_ports())
 
 
-def get_admin_domain_id():
+def get_file_stored_domain_id(backing_file):
     domain_id = None
-    if os.path.isfile(STORED_ADMIN_DOMAIN_ID):
-        log("Loading stored domain id from %s" % STORED_ADMIN_DOMAIN_ID,
+    if os.path.isfile(backing_file):
+        log("Loading stored domain id from {}".format(backing_file),
             level=INFO)
-        with open(STORED_ADMIN_DOMAIN_ID, 'r') as fd:
+        with open(backing_file, 'r') as fd:
             domain_id = fd.readline().strip('\n')
     return domain_id
+
+
+def get_admin_domain_id():
+    return get_file_stored_domain_id(STORED_ADMIN_DOMAIN_ID)
+
+
+def get_default_domain_id():
+    return get_file_stored_domain_id(STORED_DEFAULT_DOMAIN_ID)
 
 
 def pause_unit_helper(configs):

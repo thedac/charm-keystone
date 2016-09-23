@@ -816,9 +816,9 @@ class TestKeystoneUtils(CharmTestCase):
         mock_keystone.api.services.delete.assert_called_with('sid1')
 
     @patch('os.path.isfile')
-    def test_get_admin_domain_id(self, isfile_mock):
+    def test_get_file_stored_domain_id(self, isfile_mock):
         isfile_mock.return_value = False
-        x = utils.get_admin_domain_id()
+        x = utils.get_file_stored_domain_id('/a/file')
         assert x is None
         from sys import version_info
         if version_info.major == 2:
@@ -829,8 +829,20 @@ class TestKeystoneUtils(CharmTestCase):
         with patch.object(builtins, 'open', mock_open(
                 read_data="some_data\n")):
             isfile_mock.return_value = True
-            x = utils.get_admin_domain_id()
+            x = utils.get_file_stored_domain_id('/a/file')
             self.assertEquals(x, 'some_data')
+
+    @patch.object(utils, 'get_file_stored_domain_id')
+    def test_get_admin_domain_id(self, mock_get_file_stored_domain_id):
+        utils.get_admin_domain_id()
+        mock_get_file_stored_domain_id.assert_called_with(
+            '/var/lib/keystone/keystone.admin_domain_id')
+
+    @patch.object(utils, 'get_file_stored_domain_id')
+    def test_get_default_domain_id(self, mock_get_file_stored_domain_id):
+        utils.get_default_domain_id()
+        mock_get_file_stored_domain_id.assert_called_with(
+            '/var/lib/keystone/keystone.default_domain_id')
 
     def test_assess_status(self):
         with patch.object(utils, 'assess_status_func') as asf:
